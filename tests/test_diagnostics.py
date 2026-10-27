@@ -30,3 +30,26 @@ def test_invalid_address():
     result = analyze_dhcp({"ip_address": "not-an-ip"})
 
     assert result["status"] == "inconclusive"
+
+def test_apipa_with_missing_network_settings():
+    result = analyze_dhcp({
+        "ip_address": "169.254.12.34",
+        "default_gateway": None,
+        "dhcp_server": None,
+    })
+
+    assert result["status"] == "investigate"
+    assert "APIPA" in result["finding"]
+    assert "default gateway" in result["finding"]
+    assert "DHCP server" in result["finding"]
+
+
+def test_apipa_with_reported_network_settings():
+    result = analyze_dhcp({
+        "ip_address": "169.254.12.34",
+        "default_gateway": "192.168.1.1",
+        "dhcp_server": "192.168.1.10",
+    })
+
+    assert result["status"] == "investigate"
+    assert "Verify" in result["finding"]

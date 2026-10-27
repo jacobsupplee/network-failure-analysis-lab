@@ -1,9 +1,11 @@
 import ipaddress
 
 def analyze_dhcp(data: dict) -> dict:
-    """Check for signs of a DHCP configuration problem."""
+    """Check workstation evidence for signs of a DHCP problem."""
 
     ip = data.get("ip_address")
+    gateway = data.get("default_gateway")
+    dhcp_server = data.get("dhcp_server")
 
     if not ip:
         return {
@@ -30,23 +32,52 @@ def analyze_dhcp(data: dict) -> dict:
 
     apipa_range = ipaddress.ip_network("169.254.0.0/16")
 
-    # An APIPA address suggests DHCP may have failed, but doesn't explain why.
+    # APIPA suggests DHCP may have failed, but doesn't identify the cause.
     if address in apipa_range:
+        missing_settings = []
+
+        if not gateway:
+            missing_settings.append("default gateway")
+
+        if not dhcp_server:
+            missing_settings.append("DHCP server")
+
+        if missing_settings:
+            details = " and ".join(missing_settings)
+
+            return {
+                "status": "investigate",
+                "finding": (
+                    "The workstation has an APIPA address, and no "
+                    f"{details} was reported. DHCP configuration may "
+                    "not have been received."
+                ),
+                "next_step": (
+                    "Check the DHCP client, network connection, and "
+                    "DHCP server availability."
+                ),
+            }
+
         return {
             "status": "investigate",
             "finding": (
-                "The workstation has an APIPA address. "
-                "It may not have received its DHCP configuration."
+                "The workstation has an APIPA address despite a "
+                "reported gateway and DHCP server. Verify the collected "
+                "configuration and DHCP lease."
             ),
-            "next_step": "Check DHCP connectivity and client settings.",
+            "next_step": (
+                "Check the DHCP lease details and confirm that the "
+                "reported settings belong to this workstation."
+            ),
         }
 
-    # A normal-looking address doesn't guarantee the network is working.
+    # A valid-looking IPv4 address doesn't guarantee connectivity.
     return {
         "status": "no_apipa",
         "finding": (
             "The address is outside the APIPA range. "
-            "This does not confirm that the network is working."
+            "This does not confirm that DHCP or network connectivity "
+            "is working correctly."
         ),
-        "next_step": "Check gateway connectivity and DNS resolution.",
+        "next_step": "Test gateway connectivity and DNS resolution.",
     }

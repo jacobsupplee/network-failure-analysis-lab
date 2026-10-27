@@ -1,0 +1,14 @@
+{
+  "scenario_id": "DHCP-001",
+  "title": "Workstation receives an APIPA address",
+  "description": "A workstation cannot obtain its normal IPv4 configuration.",
+  "symptoms": [
+    "The workstation cannot reach network resources."
+  ],
+  "evidence": {
+    "ip_address": "169.254.12.34",
+    "default_gateway": null,
+    "dhcp_server": null
+  },
+  "expected_status": "investigate"
+}
