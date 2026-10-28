@@ -195,3 +195,68 @@ def collect_connectivity(
         "external_target": external_target,
         "external_reachable": external_reachable,
     }
+
+def collect_routing_table() -> dict:
+    """Collect and parse the Windows IPv4 routing table."""
+    try:
+        result = subprocess.run(
+            ["route", "print", "-4"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("Routing table collection timed out.") from error
+    except OSError as error:
+        raise RuntimeError(f"Could not run the route command: {error}") from error
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"route print failed with exit code {result.returncode}."
+        )
+
+    routes = []
+    in_active_routes = False
+
+    for line in result.stdout.splitlines():
+        if line.strip().startswith("IPv4 Route Table"):
+            continue
+
+        if line.strip().startswith("Active Routes:"):
+            in_active_routes = True
+            continue
+
+        if line.strip().startswith("Persistent Routes:"):
+            in_active_routes = False
+
+        if not in_active_routes:
+            continue
+
+        fields = line.split()
+
+        if len(fields) < 5:
+            continue
+
+        destination, netmask, gateway, interface, metric = fields[:5]
+
+        if not re.fullmatch(r"\d+", metric):
+            continue
+
+        routes.append(
+            {
+                "destination": destination,
+                "netmask": netmask,
+                "gateway": gateway,
+                "interface": interface,
+                "metric": int(metric),
+            }
+        )
+
+    return {
+        "source": "Windows route print -4",
+        "routes": routes,
+        "raw_output": result.stdout,
+    }

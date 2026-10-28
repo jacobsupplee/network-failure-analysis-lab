@@ -2,6 +2,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from src.analyzers.routing import analyze_routing
 from src.analysis_runner import run_analysis
 from src.analyzers.connectivity import analyze_connectivity
 from src.analyzers.dhcp import analyze_dhcp
@@ -12,6 +13,7 @@ from src.evidence_collection import (
     collect_connectivity,
     collect_dns_resolution,
     collect_network_configuration,
+    collect_routing_table
 )
 
 SCENARIOS = {
@@ -176,6 +178,29 @@ def run_live_scan() -> dict:
             "Live Network Connectivity",
             "connectivity",
             connectivity_analysis,
+        )
+    )
+
+    try:
+        routing_data = collect_routing_table()
+        routing_data["default_gateway"] = gateway_ip
+        routing_data["destination"] = "1.1.1.1"
+        routing_analysis = analyze_routing(routing_data)
+        routing_details = routing_data.get("raw_output")
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
+        routing_analysis = make_inconclusive_report(
+            f"Routing table collection failed: {error}",
+            "Check the Windows routing table command and retry the scan.",
+        )
+        routing_details = str(error)
+
+    results.append(
+        make_live_result(
+            "LIVE-ROUTING",
+            "Live Routing Table Analysis",
+            "routing",
+            routing_analysis,
+            routing_details,
         )
     )
 

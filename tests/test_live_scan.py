@@ -28,15 +28,33 @@ def test_live_scan_continues_when_dns_collection_fails(monkeypatch):
             "external_reachable": True,
         },
     )
+    monkeypatch.setattr(
+        application,
+        "collect_routing_table",
+        lambda: {
+            "source": "Windows route print -4",
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                }
+            ],
+            "raw_output": "Mock routing table",
+        },
+    )
 
     scan = application.run_live_scan()
     results = scan["results"]
     correlation = scan["correlation"]
 
-    assert len(results) == 3
+    assert len(results) == 4
     assert results[0]["scenario_id"] == "LIVE-DHCP"
     assert results[1]["analysis"]["status"] == "inconclusive"
     assert results[2]["analysis"]["status"] == "connected"
+    assert results[3]["diagnostic_type"] == "routing"
     assert correlation["status"] == "inconclusive"
 
 def test_live_scan_continues_when_configuration_collection_fails(monkeypatch):
@@ -67,13 +85,31 @@ def test_live_scan_continues_when_configuration_collection_fails(monkeypatch):
             "external_reachable": True,
         },
     )
+    monkeypatch.setattr(
+        application,
+        "collect_routing_table",
+        lambda: {
+            "source": "Windows route print -4",
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                }
+            ],
+            "raw_output": "Mock routing table",
+        },
+    )
 
     scan = application.run_live_scan()
     results = scan["results"]
     correlation = scan["correlation"]
 
-    assert len(results) == 3
+    assert len(results) == 4
     assert results[0]["analysis"]["status"] == "inconclusive"
     assert results[1]["analysis"]["status"] == "resolved"
     assert results[2]["analysis"]["status"] == "inconclusive"
+    assert results[3]["diagnostic_type"] == "routing"
     assert correlation["status"] == "inconclusive"
