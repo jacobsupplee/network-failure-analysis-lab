@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+
 def load_scenario(path: str | Path) -> dict:
     """Load a network failure scenario from a JSON file."""
 
@@ -11,6 +12,7 @@ def load_scenario(path: str | Path) -> dict:
 
     required_fields = {
         "scenario_id",
+        "diagnostic_type",
         "title",
         "evidence",
         "expected_status",
@@ -21,6 +23,9 @@ def load_scenario(path: str | Path) -> dict:
     if missing_fields:
         missing = ", ".join(sorted(missing_fields))
         raise ValueError(f"Scenario is missing required fields: {missing}")
+
+    if not isinstance(scenario["diagnostic_type"], str) or not scenario["diagnostic_type"].strip():
+        raise ValueError("Scenario diagnostic_type must be a non-empty string.")
 
     if not isinstance(scenario["evidence"], dict):
         raise ValueError("Scenario evidence must be a JSON object.")

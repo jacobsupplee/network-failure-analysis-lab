@@ -3,16 +3,29 @@ from pathlib import Path
 from src.diagnostics import analyze_dhcp
 from src.scenario_loader import load_scenario
 
+ANALYZERS = {
+    "dhcp": analyze_dhcp,
+}
 
 def run_analysis(path: str | Path) -> dict:
-    """Load a scenario, analyze its evidence, and compare the result."""
+    """Load a scenario and run its designated diagnostic module."""
 
     scenario = load_scenario(path)
-    result = analyze_dhcp(scenario["evidence"])
+    diagnostic_type = scenario["diagnostic_type"]
+
+    analyzer = ANALYZERS.get(diagnostic_type)
+
+    if analyzer is None:
+        raise ValueError(
+            f"Unsupported diagnostic type: {diagnostic_type}"
+        )
+
+    result = analyzer(scenario["evidence"])
 
     return {
         "scenario_id": scenario["scenario_id"],
         "title": scenario["title"],
+        "diagnostic_type": diagnostic_type,
         "analysis": result,
         "expected_status": scenario["expected_status"],
         "matches_expected": (

@@ -1,5 +1,6 @@
 {
   "scenario_id": "DHCP-001",
+  "diagnostic_type": "dhcp",
   "title": "Workstation receives an APIPA address",
   "description": "A workstation cannot obtain its normal IPv4 configuration.",
   "symptoms": [
