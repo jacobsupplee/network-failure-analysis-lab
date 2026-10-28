@@ -113,3 +113,26 @@ def test_collect_dns_resolution_timeout(monkeypatch):
 
     assert result["hostname"] == "example.com"
     assert result["resolution_result"] == "timeout"
+
+def test_dns_collection_timeout_returns_timeout(monkeypatch):
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="nslookup", timeout=10)
+
+    monkeypatch.setattr(subprocess, "run", timeout)
+
+    result = collect_dns_resolution("example.com")
+
+    assert result["resolution_result"] == "timeout"
+    assert result["hostname"] == "example.com"
+
+def test_dns_collection_command_unavailable(monkeypatch):
+    def command_missing(*args, **kwargs):
+        raise FileNotFoundError("nslookup not found")
+
+    monkeypatch.setattr(subprocess, "run", command_missing)
+
+    result = collect_dns_resolution("example.com")
+
+    assert result["hostname"] == "example.com"
+    assert result["resolution_result"] == "unavailable"
+    assert "nslookup not found" in result["details"]

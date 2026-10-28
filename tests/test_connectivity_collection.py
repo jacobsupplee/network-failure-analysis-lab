@@ -65,3 +65,15 @@ def test_connectivity_without_gateway(monkeypatch):
 
     assert result["gateway_reachable"] is None
     assert result["external_reachable"] is True
+
+def test_connectivity_handles_missing_ping_command(monkeypatch):
+    def command_missing(*args, **kwargs):
+        raise FileNotFoundError("ping not found")
+
+    monkeypatch.setattr(subprocess, "run", command_missing)
+
+    result = collect_connectivity("192.168.1.1")
+
+    assert result["gateway_reachable"] is None
+    assert result["external_reachable"] is None
+

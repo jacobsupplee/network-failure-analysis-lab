@@ -20,7 +20,12 @@ def analyze_dns(data: dict) -> dict:
             "Collect a hostname and test its DNS resolution.",
             evidence,
             [],
-            [{"test": "Run nslookup <hostname>", "purpose": "Check whether the hostname resolves and which DNS server responds."}],
+            [
+                {
+                    "test": "Run nslookup <hostname>",
+                    "purpose": "Check whether the hostname resolves and which DNS server responds.",
+                }
+            ],
             [
                 "Confirm the hostname resolves to the expected address.",
                 "Confirm the intended network resource is reachable.",
@@ -28,6 +33,25 @@ def analyze_dns(data: dict) -> dict:
         )
 
     normalized_result = resolution_result.strip().lower()
+
+    if normalized_result == "unavailable":
+        return build_report(
+            "inconclusive",
+            "The DNS lookup could not execute because the required command or resource was unavailable.",
+            "Verify that nslookup is available and retry the DNS test.",
+            evidence,
+            [],
+            [
+                {
+                    "test": "Check whether nslookup is available",
+                    "purpose": "Determine whether the DNS lookup utility can execute.",
+                }
+            ],
+            [
+                "Confirm the DNS lookup command can execute.",
+                "Retry hostname resolution.",
+            ],
+        )
 
     if normalized_result in {"failed", "timeout", "nxdomain"}:
         return build_report(
@@ -48,8 +72,14 @@ def analyze_dns(data: dict) -> dict:
                 },
             ],
             [
-                {"test": f"Run nslookup {hostname}", "purpose": "Inspect the DNS response and responding server."},
-                {"test": "Test connectivity to the configured DNS server", "purpose": "Determine whether the server is reachable."},
+                {
+                    "test": f"Run nslookup {hostname}",
+                    "purpose": "Inspect the DNS response and responding server.",
+                },
+                {
+                    "test": "Test connectivity to the configured DNS server",
+                    "purpose": "Determine whether the server is reachable.",
+                },
             ],
             [
                 "Confirm the hostname resolves to the expected address.",
@@ -64,7 +94,12 @@ def analyze_dns(data: dict) -> dict:
             "If access still fails, test connectivity and the target service.",
             evidence,
             [],
-            [{"test": "Test connectivity to the resolved address", "purpose": "Check whether the issue occurs after name resolution."}],
+            [
+                {
+                    "test": "Test connectivity to the resolved address",
+                    "purpose": "Check whether the issue occurs after name resolution.",
+                }
+            ],
             [
                 "Confirm the resolved address is expected.",
                 "Confirm the intended network service is accessible.",
@@ -74,10 +109,15 @@ def analyze_dns(data: dict) -> dict:
     return build_report(
         "inconclusive",
         f"Unrecognized DNS test result: {resolution_result}.",
-        "Use a supported result: success, failed, timeout, or nxdomain.",
+        "Use a supported result: success, failed, timeout, nxdomain, or unavailable.",
         evidence,
         [],
-        [{"test": f"Run nslookup {hostname}", "purpose": "Collect a recognizable DNS resolution result."}],
+        [
+            {
+                "test": f"Run nslookup {hostname}",
+                "purpose": "Collect a recognizable DNS resolution result.",
+            }
+        ],
         [
             "Record the DNS response accurately.",
             "Confirm the expected hostname and address.",

@@ -132,6 +132,12 @@ def collect_dns_resolution(hostname: str = "example.com") -> dict:
             "resolution_result": "timeout",
             "details": "The DNS lookup exceeded 10 seconds.",
         }
+    except OSError as error:
+        return {
+            "hostname": hostname,
+            "resolution_result": "unavailable",
+            "details": str(error),
+        }
 
     output = result.stdout + result.stderr
     normalized_output = output.lower()

@@ -1,3 +1,4 @@
+
 from pathlib import Path
 
 import streamlit as st
@@ -6,6 +7,7 @@ from src.analysis_runner import run_analysis
 from src.analyzers.connectivity import analyze_connectivity
 from src.analyzers.dhcp import analyze_dhcp
 from src.analyzers.dns import analyze_dns
+from src.diagnostics import build_report
 from src.evidence_collection import (
     collect_connectivity,
     collect_dns_resolution,
@@ -17,6 +19,7 @@ SCENARIOS = {
     "DHCP diagnostic": SCENARIOS_DIR / "apipa_dhcp.json",
     "DNS diagnostic": SCENARIOS_DIR / "dns_failure.json",
 }
+
 
 def display_analysis(result: dict, live: bool = False) -> None:
     analysis = result["analysis"]
@@ -102,54 +105,112 @@ def display_analysis(result: dict, live: bool = False) -> None:
 
 
 def run_live_scan() -> list[dict]:
-    config = collect_network_configuration()
-    adapter = config["primary_adapter"]
+    results = []
+    adapter = None
+    gateway_ip = None
 
-    if adapter is None:
+    try:
+        config = collect_network_configuration()
+        adapter = config["primary_adapter"]
+        gateway_ip = adapter["default_gateway"] if adapter else None
+
         dhcp_evidence = {
-            "ip_address": None,
-            "default_gateway": None,
-            "dhcp_server": None,
-        }
-        dns_server = None
-        gateway_ip = None
-    else:
-        gateway_ip = adapter["default_gateway"]
-        dhcp_evidence = {
-            "ip_address": adapter["ip_address"],
+            "ip_address": adapter["ip_address"] if adapter else None,
             "default_gateway": gateway_ip,
-            "dhcp_server": adapter["dhcp_server"],
+            "dhcp_server": adapter["dhcp_server"] if adapter else None,
         }
-        dns_servers = adapter["dns_servers"]
-        dns_server = dns_servers[0] if dns_servers else None
 
-    dns_result = collect_dns_resolution()
-    connectivity_evidence = collect_connectivity(gateway_ip)
+        dhcp_analysis = analyze_dhcp(dhcp_evidence)
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
+        dhcp_analysis = build_report(
+            status="inconclusive",
+            finding=f"Network configuration could not be collected: {error}",
+            next_step="Verify that Windows network configuration can be queried, then retry.",
+            evidence=[],
+            hypotheses=[],
+            next_tests=[
+                {
+                    "test": "Run ipconfig /all",
+                    "purpose": "Inspect the system's network configuration.",
+                }
+            ],
+            verification=[
+                "Confirm that network configuration was collected successfully."
+            ],
+        )
 
-    dns_evidence = {
-        "hostname": dns_result["hostname"],
-        "dns_server": dns_server,
-        "resolution_result": dns_result["resolution_result"],
-    }
+    results.append({
+        "scenario_id": "LIVE-DHCP",
+        "title": "Live Windows network configuration",
+        "analysis": dhcp_analysis,
+    })
 
-    return [
-        {
-            "scenario_id": "LIVE-DHCP",
-            "title": "Live Windows network configuration",
-            "analysis": analyze_dhcp(dhcp_evidence),
-        },
-        {
-            "scenario_id": "LIVE-DNS",
-            "title": f"Live DNS resolution: {dns_result['hostname']}",
-            "analysis": analyze_dns(dns_evidence),
-            "dns_details": dns_result["details"],
-        },
-        {
-            "scenario_id": "LIVE-CONNECTIVITY",
-            "title": "Live connectivity and routing checks",
-            "analysis": analyze_connectivity(connectivity_evidence),
-        },
-    ]
+    try:
+        dns_result = collect_dns_resolution()
+        dns_servers = adapter["dns_servers"] if adapter else []
+        dns_evidence = {
+            "hostname": dns_result["hostname"],
+            "dns_server": dns_servers[0] if dns_servers else None,
+            "resolution_result": dns_result["resolution_result"],
+        }
+        dns_analysis = analyze_dns(dns_evidence)
+        dns_details = dns_result["details"]
+        dns_title = f"Live DNS resolution: {dns_result['hostname']}"
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
+        dns_analysis = build_report(
+            status="inconclusive",
+            finding=f"DNS evidence could not be collected: {error}",
+            next_step="Verify that the DNS lookup can run, then retry.",
+            evidence=[],
+            hypotheses=[],
+            next_tests=[
+                {
+                    "test": "Run nslookup example.com",
+                    "purpose": "Check whether hostname resolution can be tested.",
+                }
+            ],
+            verification=[
+                "Confirm the DNS lookup completed and its result was recorded."
+            ],
+        )
+        dns_details = str(error)
+        dns_title = "Live DNS resolution"
+
+    results.append({
+        "scenario_id": "LIVE-DNS",
+        "title": dns_title,
+        "analysis": dns_analysis,
+        "dns_details": dns_details,
+    })
+
+    try:
+        connectivity_evidence = collect_connectivity(gateway_ip)
+        connectivity_analysis = analyze_connectivity(connectivity_evidence)
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
+        connectivity_analysis = build_report(
+            status="inconclusive",
+            finding=f"Connectivity evidence could not be collected: {error}",
+            next_step="Verify that connectivity checks can run, then retry.",
+            evidence=[],
+            hypotheses=[],
+            next_tests=[
+                {
+                    "test": "Test gateway and external reachability",
+                    "purpose": "Collect connectivity evidence.",
+                }
+            ],
+            verification=[
+                "Confirm that connectivity results were collected successfully."
+            ],
+        )
+
+    results.append({
+        "scenario_id": "LIVE-CONNECTIVITY",
+        "title": "Live connectivity and routing checks",
+        "analysis": connectivity_analysis,
+    })
+
+    return results
 
 
 st.set_page_config(
@@ -235,7 +296,6 @@ if st.button("Run diagnostic", type="primary"):
                             st.code(
                                 result["dns_details"] or "No output returned."
                             )
-
         else:
             selected_scenarios = (
                 list(SCENARIOS.values())

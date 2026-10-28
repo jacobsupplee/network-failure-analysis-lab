@@ -32,3 +32,16 @@ def test_dns_unknown_result():
     })
 
     assert result["status"] == "inconclusive"
+
+def test_dns_unavailable_is_inconclusive():
+    result = analyze_dns(
+        {
+            "hostname": "example.com",
+            "dns_server": None,
+            "resolution_result": "unavailable",
+        }
+    )
+
+    assert result["status"] == "inconclusive"
+    assert "could not execute" in result["finding"]
+
