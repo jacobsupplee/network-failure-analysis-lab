@@ -1,28 +1,6 @@
 import ipaddress
 
-def _report(
-    status: str,
-    finding: str,
-    next_step: str,
-    evidence: list[dict],
-    hypotheses: list[dict],
-    next_tests: list[dict],
-    verification: list[str],
-) -> dict:
-    """Return a consistent diagnostic report."""
-
-    return {
-        "status": status,
-        "finding": finding,
-        "next_step": next_step,
-        "severity": "Needs investigation" if status == "investigate" else (
-            "Insufficient data" if status == "inconclusive" else "Informational"
-        ),
-        "evidence": evidence,
-        "hypotheses": hypotheses,
-        "next_tests": next_tests,
-        "verification": verification,
-    }
+from src.diagnostics import build_report
 
 def analyze_dhcp(data: dict) -> dict:
     """Check workstation evidence for signs of a DHCP problem."""
@@ -32,7 +10,7 @@ def analyze_dhcp(data: dict) -> dict:
     dhcp_server = data.get("dhcp_server")
 
     if not ip:
-        return _report(
+        return build_report(
             "inconclusive",
             "No IP address was provided.",
             "Collect the workstation's IPv4 configuration.",
@@ -45,7 +23,7 @@ def analyze_dhcp(data: dict) -> dict:
     try:
         address = ipaddress.ip_address(ip)
     except ValueError:
-        return _report(
+        return build_report(
             "inconclusive",
             "The IP address is invalid.",
             "Check the workstation's IP configuration.",
@@ -56,7 +34,7 @@ def analyze_dhcp(data: dict) -> dict:
         )
 
     if address.version != 4:
-        return _report(
+        return build_report(
             "inconclusive",
             "This check only covers IPv4.",
             "Collect the workstation's IPv4 configuration.",
@@ -132,7 +110,7 @@ def analyze_dhcp(data: dict) -> dict:
                 },
             ]
 
-            return _report(
+            return build_report(
                 "investigate",
                 finding,
                 "Check the DHCP client, network connection, and DHCP server availability.",
@@ -146,7 +124,7 @@ def analyze_dhcp(data: dict) -> dict:
                 ],
             )
 
-        return _report(
+        return build_report(
             "investigate",
             (
                 "The workstation has an APIPA address despite a reported "
@@ -177,7 +155,7 @@ def analyze_dhcp(data: dict) -> dict:
             ],
         )
 
-    return _report(
+    return build_report(
         "no_apipa",
         (
             "The address is outside the APIPA range. This does not confirm "
