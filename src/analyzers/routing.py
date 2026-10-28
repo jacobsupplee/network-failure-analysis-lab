@@ -1,8 +1,8 @@
+from ipaddress import IPv4Address, AddressValueError
 from src.diagnostics import build_report
 
 def analyze_routing(data: dict) -> dict:
     """Analyze routing evidence for a possible network path problem."""
-
     routes = data.get("routes")
     destination = data.get("destination")
     default_gateway = data.get("default_gateway")
@@ -35,6 +35,7 @@ def analyze_routing(data: dict) -> dict:
         for route in routes
         if isinstance(route, dict)
         and route.get("destination") in {"0.0.0.0", "0.0.0.0/0"}
+        and route.get("netmask", "0.0.0.0") == "0.0.0.0"
     ]
 
     if default_gateway:
@@ -91,6 +92,85 @@ def analyze_routing(data: dict) -> dict:
                 "result": destination,
             }
         )
+
+    route_gateways = [
+        route.get("gateway")
+        for route in default_routes
+        if route.get("gateway")
+        and route.get("gateway") != "0.0.0.0"
+    ]
+
+    if default_gateway and route_gateways:
+        try:
+            reported_gateway = IPv4Address(default_gateway)
+            parsed_route_gateways = [
+                IPv4Address(gateway)
+                for gateway in route_gateways
+            ]
+        except (AddressValueError, TypeError):
+            evidence.append(
+                {
+                    "observation": "Gateway comparison",
+                    "result": "Could not compare invalid IPv4 gateway data.",
+                }
+            )
+        else:
+            matching_gateway = any(
+                gateway == reported_gateway
+                for gateway in parsed_route_gateways
+            )
+
+            evidence.append(
+                {
+                    "observation": "Default route gateway match",
+                    "result": matching_gateway,
+                }
+            )
+
+            if not matching_gateway:
+                return build_report(
+                    "investigate",
+                    (
+                        "The reported default gateway does not match "
+                        "the gateway in the supplied IPv4 default route."
+                    ),
+                    (
+                        "Confirm the active adapter and determine whether "
+                        "the reported gateway and routing table refer to "
+                        "the same network interface."
+                    ),
+                    evidence,
+                    [
+                        {
+                            "cause": "Default gateway mismatch",
+                            "reason": (
+                                "The reported gateway differs from the "
+                                "gateway recorded in the default route."
+                            ),
+                            "confidence": "Possible",
+                        }
+                    ],
+                    [
+                        {
+                            "test": "Compare adapter configuration",
+                            "purpose": (
+                                "Verify the gateway assigned to the active "
+                                "network adapter."
+                            ),
+                        },
+                        {
+                            "test": "Inspect default route selection",
+                            "purpose": (
+                                "Determine which default route Windows "
+                                "selects for the destination."
+                            ),
+                        },
+                    ],
+                    [
+                        "Confirm that the adapter and route information are current.",
+                        "Test destination reachability after verifying route selection.",
+                    ],
+                )
 
     return build_report(
         "route_present",

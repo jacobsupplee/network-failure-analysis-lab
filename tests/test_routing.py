@@ -102,3 +102,73 @@ def test_unrelated_route_entries_are_ignored_when_counting_default_routes():
     )
 
     assert default_route_count == 1
+
+def test_matching_default_gateway_is_reported():
+    report = analyze_routing(
+        {
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                }
+            ],
+            "default_gateway": "192.168.1.1",
+        }
+    )
+
+    assert report["status"] == "route_present"
+    assert any(
+        item["observation"] == "Default route gateway match"
+        and item["result"] is True
+        for item in report["evidence"]
+    )
+
+def test_mismatched_default_gateway_requires_investigation():
+    report = analyze_routing(
+        {
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                }
+            ],
+            "default_gateway": "192.168.1.254",
+        }
+    )
+
+    assert report["status"] == "investigate"
+    assert report["hypotheses"][0]["cause"] == "Default gateway mismatch"
+
+def test_multiple_default_routes_are_reported_without_automatic_failure():
+    report = analyze_routing(
+        {
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                },
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "10.0.0.1",
+                    "interface": "10.0.0.179",
+                    "metric": 30,
+                },
+            ]
+        }
+    )
+
+    assert report["status"] == "route_present"
+    assert any(
+        item["observation"] == "Default route count" and item["result"] == 2
+        for item in report["evidence"]
+    )
