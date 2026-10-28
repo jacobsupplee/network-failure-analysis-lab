@@ -1,6 +1,4 @@
-
 import application
-
 
 def test_live_scan_continues_when_dns_collection_fails(monkeypatch):
     monkeypatch.setattr(
@@ -31,13 +29,15 @@ def test_live_scan_continues_when_dns_collection_fails(monkeypatch):
         },
     )
 
-    results = application.run_live_scan()
+    scan = application.run_live_scan()
+    results = scan["results"]
+    correlation = scan["correlation"]
 
     assert len(results) == 3
     assert results[0]["scenario_id"] == "LIVE-DHCP"
     assert results[1]["analysis"]["status"] == "inconclusive"
     assert results[2]["analysis"]["status"] == "connected"
-
+    assert correlation["status"] == "inconclusive"
 
 def test_live_scan_continues_when_configuration_collection_fails(monkeypatch):
     def fail_configuration():
@@ -68,9 +68,12 @@ def test_live_scan_continues_when_configuration_collection_fails(monkeypatch):
         },
     )
 
-    results = application.run_live_scan()
+    scan = application.run_live_scan()
+    results = scan["results"]
+    correlation = scan["correlation"]
 
     assert len(results) == 3
     assert results[0]["analysis"]["status"] == "inconclusive"
     assert results[1]["analysis"]["status"] == "resolved"
     assert results[2]["analysis"]["status"] == "inconclusive"
+    assert correlation["status"] == "inconclusive"
