@@ -13,7 +13,10 @@ def test_missing_default_route_requires_investigation():
             "routes": [
                 {
                     "destination": "192.168.1.0",
+                    "netmask": "255.255.255.0",
                     "gateway": "0.0.0.0",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
                 }
             ],
             "default_gateway": "192.168.1.1",
@@ -29,7 +32,10 @@ def test_default_route_is_identified():
             "routes": [
                 {
                     "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
                     "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
                 }
             ],
             "default_gateway": "192.168.1.1",
@@ -51,6 +57,8 @@ def test_ipv4_cidr_default_route_is_identified():
                 {
                     "destination": "0.0.0.0/0",
                     "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
                 }
             ]
         }
@@ -62,9 +70,27 @@ def test_unrelated_route_entries_are_ignored_when_counting_default_routes():
     report = analyze_routing(
         {
             "routes": [
-                {"destination": "192.168.1.0"},
-                {"destination": "10.0.0.0"},
-                {"destination": "0.0.0.0"},
+                {
+                    "destination": "192.168.1.0",
+                    "netmask": "255.255.255.0",
+                    "gateway": "0.0.0.0",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                },
+                {
+                    "destination": "10.0.0.0",
+                    "netmask": "255.0.0.0",
+                    "gateway": "0.0.0.0",
+                    "interface": "10.0.0.2",
+                    "metric": 10,
+                },
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                },
             ]
         }
     )
