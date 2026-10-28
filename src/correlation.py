@@ -25,14 +25,27 @@ def correlate_findings(results: list[dict]) -> dict:
             "next_step": "Run one or more diagnostics and collect their results.",
         }
 
-    reports_by_type = {
-        report["diagnostic_type"]: report
-        for report in reports
+    reports_by_type = {}
+    status_priority = {
+        "healthy": 0,
+        "no_failure_detected": 0,
+        "inconclusive": 1,
+        "investigate": 2,
     }
-    statuses = {
-        report["diagnostic_type"]: report["status"]
-        for report in reports
-    }
+    statuses = {}
+
+    for report in reports:
+        diagnostic_type = report["diagnostic_type"]
+        reports_by_type.setdefault(diagnostic_type, []).append(report)
+
+        current_status = statuses.get(diagnostic_type)
+        new_status = report["status"]
+
+        if current_status is None or status_priority.get(
+            new_status, 1
+        ) > status_priority.get(current_status, 1):
+            statuses[diagnostic_type] = new_status
+
     supporting_findings = [
         {
             "diagnostic_type": report["diagnostic_type"],
@@ -45,6 +58,7 @@ def correlate_findings(results: list[dict]) -> dict:
     def normalize_evidence(evidence) -> dict:
         if isinstance(evidence, dict):
             return evidence
+
         normalized = {}
         if isinstance(evidence, list):
             for item in evidence:
@@ -60,8 +74,13 @@ def correlate_findings(results: list[dict]) -> dict:
         return normalized
 
     def get_evidence(diagnostic_type: str) -> dict:
-        report = reports_by_type.get(diagnostic_type, {})
-        return normalize_evidence(report.get("evidence", []))
+        combined = {}
+        for report in reports_by_type.get(diagnostic_type, []):
+            evidence = normalize_evidence(report.get("evidence", []))
+            for label, value in evidence.items():
+                if label not in combined or combined[label] is None:
+                    combined[label] = value
+        return combined
 
     def is_reachable(value) -> bool | None:
         if isinstance(value, bool):
@@ -74,12 +93,24 @@ def correlate_findings(results: list[dict]) -> dict:
                 return False
         return None
 
+    def normalize_dns_result(value) -> str | None:
+        if not isinstance(value, str):
+            return None
+
+        normalized = value.strip().lower()
+        if normalized in {"success", "successful", "resolved", "passed"}:
+            return "success"
+        if normalized in {"failed", "failure", "timeout", "nxdomain", "error"}:
+            return normalized
+        return normalized or None
+
     conflicts = []
     gateway_observations = []
 
     for report in reports:
         if report["diagnostic_type"] != "connectivity":
             continue
+
         evidence = report["evidence"]
         if isinstance(evidence, dict):
             items = [
@@ -128,14 +159,178 @@ def correlate_findings(results: list[dict]) -> dict:
             }
         )
 
+    dns_observations = []
+
+    for report in reports:
+        if report["diagnostic_type"] != "dns":
+            continue
+
+        evidence = report["evidence"]
+        if isinstance(evidence, dict):
+            items = [
+                {"observation": key, "result": value}
+                for key, value in evidence.items()
+            ]
+        elif isinstance(evidence, list):
+            items = evidence
+        else:
+            items = []
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            label = str(
+                item.get(
+                    "observation",
+                    item.get("item", item.get("check", "")),
+                )
+            ).strip().lower().replace("_", " ")
+
+            if label != "resolution result":
+                continue
+
+            value = normalize_dns_result(
+                item.get("result", item.get("value"))
+            )
+            if value is not None:
+                dns_observations.append(value)
+
+    dns_success_detected = "success" in dns_observations
+    dns_failure_detected = any(
+        value != "success" for value in dns_observations
+    )
+    dns_conflict = dns_success_detected and dns_failure_detected
+
+    if dns_conflict:
+        conflicts.append(
+            {
+                "type": "contradictory_evidence",
+                "description": (
+                    "DNS resolution results conflict: some observations "
+                    "report successful resolution while others report failure. "
+                    "Repeat the DNS test under the same conditions and compare "
+                    "the target hostname, DNS server, and timestamps."
+                ),
+            }
+        )
+
+    external_observations = []
+
+    for report in reports:
+        if report["diagnostic_type"] != "connectivity":
+            continue
+
+        evidence = report["evidence"]
+        if isinstance(evidence, dict):
+            items = [
+                {"observation": key, "result": value}
+                for key, value in evidence.items()
+            ]
+        elif isinstance(evidence, list):
+            items = evidence
+        else:
+            items = []
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            label = str(
+                item.get(
+                    "observation",
+                    item.get("item", item.get("check", "")),
+                )
+            ).strip().lower().replace("_", " ")
+
+            if label not in {
+                "external reachability",
+                "external target reachable",
+                "external reachable",
+            }:
+                continue
+
+            value = is_reachable(item.get("result", item.get("value")))
+            if value is not None:
+                external_observations.append(value)
+
+    external_conflict = (
+        True in external_observations
+        and False in external_observations
+    )
+
+    if external_conflict:
+        conflicts.append(
+            {
+                "type": "contradictory_evidence",
+                "description": (
+                    "External connectivity results conflict: some observations "
+                    "report the external target as reachable while others report "
+                    "it as unreachable. Repeat the test using the same target "
+                    "and compare timestamps and network conditions."
+                ),
+            }
+        )
+
+    default_route_observations = []
+
+    for report in reports:
+        if report["diagnostic_type"] != "routing":
+            continue
+
+        evidence = report["evidence"]
+        if isinstance(evidence, dict):
+            items = [
+                {"observation": key, "result": value}
+                for key, value in evidence.items()
+            ]
+        elif isinstance(evidence, list):
+            items = evidence
+        else:
+            items = []
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            label = str(
+                item.get(
+                    "observation",
+                    item.get("item", item.get("check", "")),
+                )
+            ).strip().lower().replace("_", " ")
+
+            if label not in {"default route count", "default routes count"}:
+                continue
+
+            value = item.get("result", item.get("value"))
+            if isinstance(value, int) and not isinstance(value, bool):
+                default_route_observations.append(value)
+            elif isinstance(value, str) and value.strip().isdigit():
+                default_route_observations.append(int(value.strip()))
+
+    routing_conflict = (
+        any(value == 0 for value in default_route_observations)
+        and any(value > 0 for value in default_route_observations)
+    )
+
+    if routing_conflict:
+        conflicts.append(
+            {
+                "type": "contradictory_evidence",
+                "description": (
+                    "Routing results conflict: some reports indicate no IPv4 "
+                    "default route while others indicate at least one. Repeat "
+                    "the route-table collection and compare the captured results."
+                ),
+            }
+        )
+
     dhcp_evidence = get_evidence("dhcp")
     dns_evidence = get_evidence("dns")
     connectivity_evidence = get_evidence("connectivity")
     routing_evidence = get_evidence("routing")
-    ports_reports = [
-        report for report in reports
-        if report["diagnostic_type"] == "ports"
-    ]
+    ports_reports = reports_by_type.get("ports", [])
 
     ip_address = dhcp_evidence.get("IPv4 address")
     if ip_address is None:
@@ -160,13 +355,24 @@ def correlate_findings(results: list[dict]) -> dict:
         external_reachable = connectivity_evidence.get("external_reachable")
     external_reachable = is_reachable(external_reachable)
 
+    if external_conflict:
+        external_reachable = None
+
     dns_result = dns_evidence.get("Resolution result")
     if dns_result is None:
         dns_result = dns_evidence.get("resolution_result")
     if isinstance(dns_result, str):
         dns_result = dns_result.strip().lower()
 
+    if dns_conflict:
+        dns_result = next(
+            value for value in dns_observations if value != "success"
+        )
+
     default_route_count = routing_evidence.get("Default route count")
+    if routing_conflict:
+        default_route_count = None
+
     missing_default_route = (
         isinstance(default_route_count, int)
         and not isinstance(default_route_count, bool)
@@ -174,6 +380,7 @@ def correlate_findings(results: list[dict]) -> dict:
     )
 
     tcp_observations = []
+
     for report in ports_reports:
         evidence = normalize_evidence(report["evidence"])
         result = evidence.get("TCP connection result")
@@ -221,6 +428,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "The DHCP diagnostic identified a condition requiring "
                 "investigation. Review the reported address and DHCP evidence."
             )
+
         likely_causes.append(
             {
                 "cause": "DHCP or IP configuration problem",
@@ -243,6 +451,7 @@ def correlate_findings(results: list[dict]) -> dict:
         route_supporting_evidence = [
             "The routing diagnostic reported zero default routes."
         ]
+
         if external_reachable is False:
             route_supporting_evidence.append(
                 "The external connectivity test failed."
@@ -251,6 +460,7 @@ def correlate_findings(results: list[dict]) -> dict:
             route_supporting_evidence.append(
                 "At least one TCP connection attempt timed out."
             )
+
         likely_causes.append(
             {
                 "cause": "Missing IPv4 default route",
@@ -286,6 +496,7 @@ def correlate_findings(results: list[dict]) -> dict:
             "The default gateway responded to the reachability test.",
             "The external target did not respond to the reachability test.",
         ]
+
         if tcp_timeout_detected:
             external_supporting_evidence.append(
                 "At least one TCP connection attempt also timed out."
@@ -298,6 +509,7 @@ def correlate_findings(results: list[dict]) -> dict:
             external_supporting_evidence.append(
                 "The presence of a default route does not confirm that the route is usable."
             )
+
         likely_causes.append(
             {
                 "cause": "External network reachability problem",
@@ -329,8 +541,9 @@ def correlate_findings(results: list[dict]) -> dict:
         )
 
     dns_failed = (
-        dns_result in {"failed", "timeout", "nxdomain"}
+        dns_result in {"failed", "failure", "timeout", "nxdomain", "error"}
         or statuses.get("dns") == "investigate"
+        or dns_conflict
     )
 
     if dns_failed:
@@ -345,6 +558,12 @@ def correlate_findings(results: list[dict]) -> dict:
                 "DNS resolution failed alongside a DHCP or IP configuration "
                 "concern. Verify network configuration and DNS settings."
             )
+        elif dns_conflict:
+            reason = (
+                "DNS reports contain contradictory results. At least one "
+                "observation indicates failure, but the available evidence "
+                "does not establish whether DNS is consistently failing."
+            )
         else:
             reason = (
                 "DNS resolution failed or timed out. Check the hostname, "
@@ -356,6 +575,11 @@ def correlate_findings(results: list[dict]) -> dict:
             if dns_result is not None
             else "The DNS diagnostic reported a condition requiring investigation."
         ]
+
+        if dns_conflict:
+            dns_supporting_evidence.append(
+                "Repeated DNS reports contain contradictory resolution results."
+            )
         if gateway_reachable is True:
             dns_supporting_evidence.append(
                 "The default gateway responded to the reachability test."
@@ -372,6 +596,7 @@ def correlate_findings(results: list[dict]) -> dict:
             dns_supporting_evidence.append(
                 "The external target did not respond to the reachability test."
             )
+
         likely_causes.append(
             {
                 "cause": "DNS resolution problem",
@@ -384,6 +609,7 @@ def correlate_findings(results: list[dict]) -> dict:
     for observation in tcp_observations:
         tcp_result = observation["result"]
         target = f'{observation["host"]}:{observation["port"]}'
+
         if tcp_result == "refused":
             likely_causes.append(
                 {
@@ -410,6 +636,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 f"The TCP connection attempt to {target} timed out.",
                 "A timeout does not distinguish packet filtering from an unavailable host or service.",
             ]
+
             if gateway_reachable is True and external_reachable is True:
                 tcp_supporting_evidence.append(
                     "Gateway and external ICMP reachability succeeded, "
@@ -423,6 +650,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 tcp_supporting_evidence.append(
                     "The routing diagnostic reported no IPv4 default route."
                 )
+
             likely_causes.append(
                 {
                     "cause": "TCP port-specific connectivity problem",
@@ -560,6 +788,11 @@ def correlate_findings(results: list[dict]) -> dict:
                     "DNS resolution failed or timed out. Confirm the DNS server "
                     "and compare results with the connectivity tests."
                 )
+                if dns_conflict:
+                    explanation += (
+                        " Contradictory DNS observations reduce certainty until "
+                        "the test is repeated."
+                    )
             else:
                 score = min(50 + evidence_count * 5, 70)
                 explanation = (
@@ -567,12 +800,12 @@ def correlate_findings(results: list[dict]) -> dict:
                     "available observations do not establish a specific cause."
                 )
 
-            if gateway_conflict:
+            if conflicts:
                 cause["confidence"] = "Low"
                 score = min(score, 50)
                 explanation += (
-                    " Gateway observations conflict, so this assessment should "
-                    "be treated cautiously until reachability is retested."
+                    " Conflicting diagnostic observations reduce certainty; "
+                    "repeat the affected tests before relying on this assessment."
                 )
 
             cause["priority_score"] = score
@@ -632,14 +865,16 @@ def correlate_findings(results: list[dict]) -> dict:
             "next_step": next_step,
         }
 
-    if any(
+    if conflicts or any(
         status in {"inconclusive", "investigate"}
         for status in statuses.values()
     ):
         return {
-            "status": "inconclusive",
+            "status": "investigate" if conflicts else "inconclusive",
             "finding": (
-                "The available evidence does not establish a specific root "
+                "Conflicting diagnostic evidence requires retesting before a root cause can be selected."
+                if conflicts
+                else "The available evidence does not establish a specific root "
                 "cause, but one or more diagnostics require further investigation."
             ),
             "likely_causes": [],
