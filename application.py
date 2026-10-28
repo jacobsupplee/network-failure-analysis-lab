@@ -2,18 +2,20 @@ from pathlib import Path
 
 import streamlit as st
 
-from src.analyzers.routing import analyze_routing
-from src.analysis_runner import run_analysis
 from src.analyzers.connectivity import analyze_connectivity
 from src.analyzers.dhcp import analyze_dhcp
 from src.analyzers.dns import analyze_dns
+from src.analyzers.ports import analyze_port
+from src.analyzers.routing import analyze_routing
+from src.analysis_runner import run_analysis
 from src.correlation import correlate_findings
 from src.diagnostics import build_report
 from src.evidence_collection import (
     collect_connectivity,
     collect_dns_resolution,
     collect_network_configuration,
-    collect_routing_table
+    collect_routing_table,
+    collect_tcp_connection,
 )
 
 SCENARIOS = {
@@ -100,7 +102,11 @@ def make_inconclusive_report(
         [],
     )
 
-def run_live_scan() -> dict:
+
+def run_live_scan(
+    tcp_host: str = "example.com",
+    tcp_port: int = 443,
+) -> dict:
     results = []
     adapter = None
     gateway_ip = None
@@ -204,6 +210,27 @@ def run_live_scan() -> dict:
         )
     )
 
+    try:
+        tcp_data = collect_tcp_connection(tcp_host, tcp_port)
+        tcp_analysis = analyze_port(tcp_data)
+        tcp_details = tcp_data.get("error")
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
+        tcp_analysis = make_inconclusive_report(
+            f"TCP connection test failed: {error}",
+            "Check the target host and port, then retry the TCP test.",
+        )
+        tcp_details = str(error)
+
+    results.append(
+        make_live_result(
+            "LIVE-PORTS",
+            f"TCP Port Test: {tcp_host}:{tcp_port}",
+            "ports",
+            tcp_analysis,
+            tcp_details,
+        )
+    )
+
     return {
         "results": results,
         "correlation": correlate_findings(results),
@@ -246,7 +273,7 @@ st.set_page_config(
 st.title("Network Failure Analysis Lab")
 st.write(
     "An evidence-driven tool for investigating network configuration, "
-    "DNS resolution, and connectivity problems."
+    "DNS resolution, connectivity, routing, and TCP port problems."
 )
 
 mode = st.selectbox(
@@ -260,9 +287,19 @@ mode = st.selectbox(
 )
 
 if mode == "Live Network Scan":
+    st.subheader("TCP Connection Test")
+    tcp_host = st.text_input("Target hostname or IP address", value="example.com")
+    tcp_port = st.number_input(
+        "Target TCP port",
+        min_value=1,
+        max_value=65535,
+        value=443,
+        step=1,
+    )
+
     if st.button("Run Live Network Scan", type="primary"):
         try:
-            scan = run_live_scan()
+            scan = run_live_scan(tcp_host.strip(), int(tcp_port))
             results = scan["results"]
             correlation = scan["correlation"]
 

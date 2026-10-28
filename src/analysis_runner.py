@@ -1,16 +1,17 @@
 from pathlib import Path
 from src.analyzers.dhcp import analyze_dhcp
 from src.analyzers.dns import analyze_dns
+from src.analyzers.ports import analyze_port
 from src.scenario_loader import load_scenario
 
 ANALYZERS = {
     "dhcp": analyze_dhcp,
     "dns": analyze_dns,
+    "ports": analyze_port,
 }
 
 def run_analysis(path: str | Path) -> dict:
     """Load a scenario and run its designated diagnostic module."""
-
     scenario = load_scenario(path)
     diagnostic_type = scenario["diagnostic_type"]
 

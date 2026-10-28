@@ -1,9 +1,9 @@
 import re
+import socket
 import subprocess
 
 def collect_network_configuration() -> dict:
     """Collect and parse network configuration reported by Windows."""
-
     result = subprocess.run(
         ["ipconfig", "/all"],
         capture_output=True,
@@ -33,7 +33,10 @@ def collect_network_configuration() -> dict:
 
             current_adapter = {
                 "name": re.sub(
-                    r"^.*?\badapter\s+", "", header.group(1).strip(), flags=re.IGNORECASE
+                    r"^.*?\badapter\s+",
+                    "",
+                    header.group(1).strip(),
+                    flags=re.IGNORECASE,
                 ),
                 "ip_address": None,
                 "subnet_mask": None,
@@ -260,3 +263,57 @@ def collect_routing_table() -> dict:
         "routes": routes,
         "raw_output": result.stdout,
     }
+
+
+def collect_tcp_connection(
+    host: str,
+    port: int,
+    timeout: float = 3.0,
+) -> dict:
+    """Test a TCP connection with a bounded connection timeout."""
+    evidence = {
+        "host": host,
+        "port": port,
+        "result": "error",
+        "error": None,
+    }
+
+    if not isinstance(host, str) or not host.strip():
+        evidence["error"] = "A non-empty hostname or IP address is required."
+        return evidence
+
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        evidence["error"] = "Port must be an integer between 1 and 65535."
+        return evidence
+
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not 0 < timeout <= 30
+    ):
+        evidence["error"] = "Timeout must be greater than 0 and no more than 30 seconds."
+        return evidence
+
+    evidence["host"] = host.strip()
+
+    try:
+        with socket.create_connection(
+            (evidence["host"], port),
+            timeout=timeout,
+        ):
+            evidence["result"] = "connected"
+    except ConnectionRefusedError as error:
+        evidence["result"] = "refused"
+        evidence["error"] = str(error)
+    except (socket.timeout, TimeoutError) as error:
+        evidence["result"] = "timeout"
+        evidence["error"] = str(error) or "The TCP connection attempt timed out."
+    except OSError as error:
+        evidence["error"] = str(error)
+
+        if getattr(error, "errno", None) in {10051, 10065, 101, 113}:
+            evidence["result"] = "unreachable"
+        else:
+            evidence["result"] = "error"
+
+    return evidence

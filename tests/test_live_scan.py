@@ -13,7 +13,6 @@ def test_live_scan_continues_when_dns_collection_fails(monkeypatch):
             }
         },
     )
-
     def fail_dns():
         raise RuntimeError("DNS collection failed")
 
@@ -45,16 +44,27 @@ def test_live_scan_continues_when_dns_collection_fails(monkeypatch):
             "raw_output": "Mock routing table",
         },
     )
+    monkeypatch.setattr(
+        application,
+        "collect_tcp_connection",
+        lambda host, port: {
+            "host": host,
+            "port": port,
+            "result": "connected",
+            "error": None,
+        },
+    )
 
     scan = application.run_live_scan()
     results = scan["results"]
     correlation = scan["correlation"]
 
-    assert len(results) == 4
+    assert len(results) == 5
     assert results[0]["scenario_id"] == "LIVE-DHCP"
     assert results[1]["analysis"]["status"] == "inconclusive"
     assert results[2]["analysis"]["status"] == "connected"
     assert results[3]["diagnostic_type"] == "routing"
+    assert results[4]["diagnostic_type"] == "ports"
     assert correlation["status"] == "inconclusive"
 
 def test_live_scan_continues_when_configuration_collection_fails(monkeypatch):
@@ -102,14 +112,25 @@ def test_live_scan_continues_when_configuration_collection_fails(monkeypatch):
             "raw_output": "Mock routing table",
         },
     )
+    monkeypatch.setattr(
+        application,
+        "collect_tcp_connection",
+        lambda host, port: {
+            "host": host,
+            "port": port,
+            "result": "connected",
+            "error": None,
+        },
+    )
 
     scan = application.run_live_scan()
     results = scan["results"]
     correlation = scan["correlation"]
 
-    assert len(results) == 4
+    assert len(results) == 5
     assert results[0]["analysis"]["status"] == "inconclusive"
     assert results[1]["analysis"]["status"] == "resolved"
     assert results[2]["analysis"]["status"] == "inconclusive"
     assert results[3]["diagnostic_type"] == "routing"
+    assert results[4]["diagnostic_type"] == "ports"
     assert correlation["status"] == "inconclusive"
