@@ -23,50 +23,100 @@ SCENARIOS = {
     "DNS diagnostic": Path("scenarios/dns_failure.json"),
 }
 
+STATUS_LABELS = {
+    "healthy": "Healthy",
+    "no_failure_detected": "No failure detected",
+    "resolved": "Resolved",
+    "connected": "Connected",
+    "reachable": "Reachable",
+    "route_present": "Route present",
+    "no_apipa": "No APIPA address detected",
+    "investigate": "Investigation required",
+    "inconclusive": "Inconclusive",
+}
+
+
+def status_label(status: str) -> str:
+    return STATUS_LABELS.get(status, status.replace("_", " ").capitalize())
+
+
+def show_status_message(status: str, message: str) -> None:
+    if status in {"healthy", "no_failure_detected", "resolved", "connected", "reachable", "route_present", "no_apipa"}:
+        st.success(message)
+    elif status == "investigate":
+        st.warning(message)
+    elif status == "inconclusive":
+        st.info(message)
+    else:
+        st.info(message)
+
+
 def display_analysis(result: dict, live: bool = False) -> None:
     analysis = result["analysis"]
+    status = analysis.get("status", "inconclusive")
 
     st.subheader(result.get("title", "Diagnostic result"))
-    st.write(f"**Status:** {analysis['status']}")
-    st.write(f"**Finding:** {analysis['finding']}")
-    st.write(f"**Severity:** {analysis.get('severity', 'Not specified')}")
-    st.write(f"**Recommended next step:** {analysis['next_step']}")
+    show_status_message(status, f"{status_label(status)}: {analysis.get('finding', 'No finding was provided.')}")
 
-    with st.expander("Evidence", expanded=True):
-        if analysis["evidence"]:
-            st.json(analysis["evidence"])
+    col1, col2 = st.columns(2)
+    col1.metric("Severity", analysis.get("severity", "Not specified"))
+    col2.write("**Recommended next step**")
+    col2.write(analysis.get("next_step", "No next step was provided."))
+
+    with st.expander("Evidence", expanded=False):
+        evidence = analysis.get("evidence", [])
+        if evidence:
+            st.json(evidence)
         else:
             st.write("No evidence was recorded.")
 
-    with st.expander("Possible causes"):
-        if analysis["hypotheses"]:
-            st.json(analysis["hypotheses"])
+    with st.expander("Possible causes", expanded=False):
+        hypotheses = analysis.get("hypotheses", [])
+        if hypotheses:
+            for hypothesis in hypotheses:
+                if isinstance(hypothesis, dict):
+                    st.markdown(f"**{hypothesis.get('cause', 'Possible cause')}**")
+                    if hypothesis.get("reason"):
+                        st.write(hypothesis["reason"])
+                    if hypothesis.get("confidence"):
+                        st.caption(f"Confidence: {hypothesis['confidence']}")
+                else:
+                    st.write(hypothesis)
         else:
             st.write("No possible causes were identified.")
 
-    with st.expander("Recommended tests"):
-        if analysis["next_tests"]:
-            st.json(analysis["next_tests"])
+    with st.expander("Recommended tests", expanded=False):
+        next_tests = analysis.get("next_tests", [])
+        if next_tests:
+            for test in next_tests:
+                if isinstance(test, dict):
+                    st.markdown(f"**{test.get('test', 'Recommended test')}**")
+                    if test.get("purpose"):
+                        st.write(test["purpose"])
+                else:
+                    st.write(test)
         else:
             st.write("No additional tests were recommended.")
 
-    with st.expander("Verification steps"):
-        if analysis["verification"]:
-            for step in analysis["verification"]:
-                st.write(f"- {step}")
+    with st.expander("Verification steps", expanded=False):
+        verification = analysis.get("verification", [])
+        if verification:
+            for step in verification:
+                st.markdown(f"- {step}")
         else:
             st.write("No verification steps were recorded.")
 
     if result.get("details"):
-        with st.expander("Collection details"):
-            st.write(result["details"])
+        with st.expander("Raw collection output", expanded=False):
+            st.code(result["details"], language="text")
 
     if not live and "expected_status" in result:
         matches = result["matches_expected"]
-        st.write(
-            f"**Scenario expectation:** "
-            f"{'Matched' if matches else 'Did not match'}"
-        )
+        if matches:
+            st.success("Scenario expectation matched.")
+        else:
+            st.warning("Scenario result did not match the expected status.")
+
 
 def make_live_result(
     scenario_id: str,
@@ -236,32 +286,59 @@ def run_live_scan(
         "correlation": correlate_findings(results),
     }
 
+
 def display_correlation(correlation: dict) -> None:
+    status = correlation.get("status", "inconclusive")
     st.subheader("Overall Root-Cause Assessment")
-    st.write(f"**Status:** {correlation['status']}")
-    st.write(f"**Finding:** {correlation['finding']}")
+    show_status_message(status, f"{status_label(status)}: {correlation.get('finding', 'No overall finding was provided.')}")
 
-    st.write("**Likely failure areas**")
-    if correlation["likely_causes"]:
-        for cause in correlation["likely_causes"]:
-            st.markdown(f"**{cause['cause']}**")
-            st.write(f"Reason: {cause['reason']}")
-            st.write(f"Confidence: {cause['confidence']}")
+    likely_causes = correlation.get("likely_causes", [])
+    if likely_causes:
+        st.markdown("#### Likely failure areas")
+        for index, cause in enumerate(likely_causes, start=1):
+            with st.container(border=True):
+                st.markdown(f"**{index}. {cause.get('cause', 'Unspecified cause')}**")
+                st.write(cause.get("reason", "No explanation was provided."))
+                meta_col1, meta_col2 = st.columns(2)
+                meta_col1.metric("Confidence", cause.get("confidence", "Unspecified"))
+                score = cause.get("priority_score")
+                if score is not None:
+                    meta_col2.metric("Troubleshooting priority", f"{score}/100")
+                    st.caption("Priority score helps order investigation; it is not a probability that this cause is correct.")
+                else:
+                    meta_col2.write("**Troubleshooting priority**")
+                    meta_col2.write("Not scored")
 
-            supporting_evidence = cause.get("supporting_evidence", [])
-            if supporting_evidence:
-                st.write("**Supporting evidence**")
-                for evidence in supporting_evidence:
-                    st.markdown(f"- {evidence}")
-            else:
-                st.write("No specific supporting evidence was recorded.")
+                if cause.get("priority_explanation"):
+                    st.caption(cause["priority_explanation"])
+
+                supporting_evidence = cause.get("supporting_evidence", [])
+                if supporting_evidence:
+                    with st.expander("Supporting evidence", expanded=False):
+                        for evidence in supporting_evidence:
+                            st.markdown(f"- {evidence}")
+                evidence_references = cause.get("evidence_references", [])
+                if evidence_references:
+                    with st.expander("Evidence source references", expanded=False):
+                        st.json(evidence_references)
     else:
-        st.write("No likely causes were identified from the supplied results.")
+        st.info("No likely causes were identified from the available results.")
 
-    st.write(f"**Recommended next step:** {correlation['next_step']}")
+    st.markdown("#### Recommended next step")
+    st.write(correlation.get("next_step", "Run additional diagnostics to gather more evidence."))
 
-    with st.expander("Supporting diagnostic findings"):
-        st.json(correlation["supporting_findings"])
+    with st.expander("All diagnostic findings", expanded=False):
+        findings = correlation.get("supporting_findings", [])
+        if findings:
+            st.dataframe(findings, use_container_width=True, hide_index=True)
+        else:
+            st.write("No supporting findings were recorded.")
+
+    conflicts = correlation.get("conflicts", [])
+    if conflicts:
+        with st.expander("Conflicting observations", expanded=False):
+            st.warning("Some observations conflict. Repeat the affected tests before relying on the assessment.")
+            st.json(conflicts)
 
 
 st.set_page_config(
@@ -287,9 +364,12 @@ mode = st.selectbox(
 )
 
 if mode == "Live Network Scan":
-    st.subheader("TCP Connection Test")
-    tcp_host = st.text_input("Target hostname or IP address", value="example.com")
-    tcp_port = st.number_input(
+    st.subheader("Live network checks")
+    st.caption("Runs local configuration, DNS, connectivity, routing, and TCP checks on this computer.")
+
+    input_col1, input_col2 = st.columns([3, 1])
+    tcp_host = input_col1.text_input("Target hostname or IP address", value="example.com")
+    tcp_port = input_col2.number_input(
         "Target TCP port",
         min_value=1,
         max_value=65535,
@@ -298,48 +378,59 @@ if mode == "Live Network Scan":
     )
 
     if st.button("Run Live Network Scan", type="primary"):
-        try:
-            scan = run_live_scan(tcp_host.strip(), int(tcp_port))
-            results = scan["results"]
-            correlation = scan["correlation"]
+        if not tcp_host.strip():
+            st.error("Enter a target hostname or IP address.")
+        else:
+            try:
+                with st.spinner("Collecting network evidence and analyzing results..."):
+                    scan = run_live_scan(tcp_host.strip(), int(tcp_port))
+                results = scan["results"]
+                correlation = scan["correlation"]
 
-            investigation_count = sum(
-                result["analysis"]["status"] == "investigate"
-                for result in results
-            )
-            inconclusive_count = sum(
-                result["analysis"]["status"] == "inconclusive"
-                for result in results
-            )
+                investigation_count = sum(
+                    result["analysis"].get("status") == "investigate"
+                    for result in results
+                )
+                inconclusive_count = sum(
+                    result["analysis"].get("status") == "inconclusive"
+                    for result in results
+                )
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Checks Run", len(results))
-            col2.metric("Need Investigation", investigation_count)
-            col3.metric("Inconclusive", inconclusive_count)
+                metric_col1, metric_col2, metric_col3 = st.columns(3)
+                metric_col1.metric("Checks completed", len(results))
+                metric_col2.metric("Need investigation", investigation_count)
+                metric_col3.metric("Inconclusive", inconclusive_count)
 
-            display_correlation(correlation)
+                st.divider()
+                display_correlation(correlation)
 
-            st.divider()
-            st.subheader("Individual Diagnostic Reports")
+                st.divider()
+                st.subheader("Individual diagnostic results")
+                st.caption("Open a result for its evidence, recommended tests, and verification steps.")
 
-            for result in results:
-                with st.expander(result["title"]):
-                    display_analysis(result, live=True)
+                for result in results:
+                    analysis = result["analysis"]
+                    result_status = analysis.get("status", "inconclusive")
+                    with st.expander(
+                        f"{result['title']} · {status_label(result_status)}",
+                        expanded=False,
+                    ):
+                        display_analysis(result, live=True)
 
-        except (OSError, RuntimeError, ValueError, KeyError) as error:
-            st.error(f"The live scan could not complete: {error}")
+            except (OSError, RuntimeError, ValueError, KeyError) as error:
+                st.error(f"The live scan could not complete: {error}")
 
 elif mode == "Combined scan":
-    st.subheader("Scenario Analysis")
+    st.subheader("Scenario analysis")
+    st.caption("Run the bundled example scenarios to see how the tool handles known network problems.")
 
     for scenario_name, scenario_path in SCENARIOS.items():
-        st.markdown(f"### {scenario_name}")
-
-        try:
-            result = run_analysis(scenario_path)
-            display_analysis(result)
-        except (OSError, RuntimeError, ValueError, KeyError) as error:
-            st.error(f"Could not run {scenario_name}: {error}")
+        with st.expander(scenario_name, expanded=True):
+            try:
+                result = run_analysis(scenario_path)
+                display_analysis(result)
+            except (OSError, RuntimeError, ValueError, KeyError) as error:
+                st.error(f"Could not run {scenario_name}: {error}")
 
 elif mode in SCENARIOS:
     try:
