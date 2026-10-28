@@ -14,6 +14,7 @@ def correlate_findings(results: list[dict]) -> dict:
         and "status" in result["analysis"]
         and "finding" in result["analysis"]
     ]
+
     if not reports:
         return {
             "status": "inconclusive",
@@ -22,6 +23,7 @@ def correlate_findings(results: list[dict]) -> dict:
             "supporting_findings": [],
             "next_step": "Run one or more diagnostics and collect their results.",
         }
+
     reports_by_type = {
         report["diagnostic_type"]: report
         for report in reports
@@ -76,34 +78,40 @@ def correlate_findings(results: list[dict]) -> dict:
         report for report in reports
         if report["diagnostic_type"] == "ports"
     ]
+
     ip_address = dhcp_evidence.get("IPv4 address")
     if ip_address is None:
         ip_address = dhcp_evidence.get("IP address")
     if ip_address is None:
         ip_address = dhcp_evidence.get("ip_address")
+
     gateway_reachable = connectivity_evidence.get("Gateway reachability")
     if gateway_reachable is None:
         gateway_reachable = connectivity_evidence.get("Gateway reachable")
     if gateway_reachable is None:
         gateway_reachable = connectivity_evidence.get("gateway_reachable")
     gateway_reachable = is_reachable(gateway_reachable)
+
     external_reachable = connectivity_evidence.get("External reachability")
     if external_reachable is None:
         external_reachable = connectivity_evidence.get("External target reachable")
     if external_reachable is None:
         external_reachable = connectivity_evidence.get("external_reachable")
     external_reachable = is_reachable(external_reachable)
+
     dns_result = dns_evidence.get("Resolution result")
     if dns_result is None:
         dns_result = dns_evidence.get("resolution_result")
     if isinstance(dns_result, str):
         dns_result = dns_result.strip().lower()
+
     default_route_count = routing_evidence.get("Default route count")
     missing_default_route = (
         isinstance(default_route_count, int)
         and not isinstance(default_route_count, bool)
         and default_route_count == 0
     )
+
     tcp_observations = []
     for report in ports_reports:
         evidence = normalize_evidence(report["evidence"])
@@ -117,6 +125,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "result": result,
             }
         )
+
     tcp_results = {
         observation["result"]
         for observation in tcp_observations
@@ -125,6 +134,7 @@ def correlate_findings(results: list[dict]) -> dict:
         tcp_results.intersection({"refused", "timeout", "unreachable"})
     )
     tcp_timeout_detected = "timeout" in tcp_results
+
     apipa_detected = False
     if isinstance(ip_address, str):
         try:
@@ -135,7 +145,9 @@ def correlate_findings(results: list[dict]) -> dict:
             )
         except ValueError:
             pass
+
     likely_causes = []
+
     if statuses.get("dhcp") == "investigate" or apipa_detected:
         if apipa_detected:
             reason = (
@@ -160,6 +172,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 ],
             }
         )
+
     if missing_default_route:
         corroborating_evidence = (
             external_reachable is False
@@ -191,6 +204,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "supporting_evidence": route_supporting_evidence,
             }
         )
+
     if gateway_reachable is False:
         likely_causes.append(
             {
@@ -252,10 +266,12 @@ def correlate_findings(results: list[dict]) -> dict:
                 ],
             }
         )
+
     dns_failed = (
         dns_result in {"failed", "timeout", "nxdomain"}
         or statuses.get("dns") == "investigate"
     )
+
     if dns_failed:
         if gateway_reachable is True and external_reachable is True:
             reason = (
@@ -273,6 +289,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "DNS resolution failed or timed out. Check the hostname, "
                 "configured DNS server, and DNS query response."
             )
+
         dns_supporting_evidence = [
             f"DNS resolution result: {dns_result}"
             if dns_result is not None
@@ -302,6 +319,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "supporting_evidence": dns_supporting_evidence,
             }
         )
+
     for observation in tcp_observations:
         tcp_result = observation["result"]
         target = f'{observation["host"]}:{observation["port"]}'
@@ -372,7 +390,125 @@ def correlate_findings(results: list[dict]) -> dict:
                     ],
                 }
             )
+
     if likely_causes:
+        priority_order = {
+            "Missing IPv4 default route": 1,
+            "DHCP or IP configuration problem": 2,
+            "Local network or default gateway reachability problem": 3,
+            "External network reachability problem": 4,
+            "Network connectivity problem": 4,
+            "DNS resolution problem": 5,
+            "TCP target or network path unavailable": 6,
+            "TCP service unavailable or connection actively rejected": 7,
+            "TCP port-specific connectivity problem": 8,
+        }
+        likely_causes.sort(
+            key=lambda cause: priority_order.get(cause["cause"], 99)
+        )
+
+        for rank, cause in enumerate(likely_causes, start=1):
+            cause["priority_rank"] = rank
+            cause_name = cause["cause"]
+            evidence_count = len(cause["supporting_evidence"])
+
+            if cause_name == "Missing IPv4 default route":
+                if external_reachable is False and tcp_timeout_detected:
+                    score = 95
+                    explanation = (
+                        "A missing default route was directly observed, "
+                        "and external connectivity failure plus a TCP timeout "
+                        "corroborate its troubleshooting priority. This does "
+                        "not prove it is the only cause."
+                    )
+                elif external_reachable is False:
+                    score = 85
+                    explanation = (
+                        "A missing default route was directly observed and "
+                        "external connectivity failed, supporting high "
+                        "troubleshooting priority."
+                    )
+                else:
+                    score = 70
+                    explanation = (
+                        "A missing default route was directly observed. "
+                        "Further connectivity evidence is needed to establish "
+                        "its impact."
+                    )
+            elif cause_name == "External network reachability problem":
+                if tcp_timeout_detected:
+                    score = 80
+                    explanation = (
+                        "The gateway responded, external connectivity failed, "
+                        "and a TCP timeout provides corroborating evidence."
+                    )
+                else:
+                    score = 65
+                    explanation = (
+                        "The gateway responded but the external reachability "
+                        "test failed. Additional tests are needed to isolate "
+                        "the cause."
+                    )
+            elif cause_name == "TCP port-specific connectivity problem":
+                if external_reachable is False or missing_default_route:
+                    score = 60
+                    explanation = (
+                        "The TCP timeout is accompanied by broader network "
+                        "failure evidence, increasing its troubleshooting priority "
+                        "without isolating the cause."
+                    )
+                else:
+                    score = 35
+                    explanation = (
+                        "The TCP timeout is isolated. It warrants investigation, "
+                        "but does not distinguish filtering, service availability, "
+                        "or a network-path problem."
+                    )
+            elif cause_name == "TCP service unavailable or connection actively rejected":
+                score = 55
+                explanation = (
+                    "The target actively refused the TCP connection. Check "
+                    "whether the service is listening or a device rejected "
+                    "the connection; the result does not identify which."
+                )
+            elif cause_name == "TCP target or network path unavailable":
+                score = 65
+                explanation = (
+                    "The TCP test reported an unreachable target, so addressing "
+                    "and routing merit investigation before service-level causes."
+                )
+            elif cause_name == "DHCP or IP configuration problem":
+                score = 85 if apipa_detected else 65
+                explanation = (
+                    "The IP configuration diagnostic requires investigation"
+                    + (
+                        " and the reported address is in the APIPA range."
+                        if apipa_detected
+                        else "."
+                    )
+                )
+            elif cause_name == "Local network or default gateway reachability problem":
+                score = 75
+                explanation = (
+                    "The gateway reachability test failed. Local connectivity "
+                    "and possible ICMP filtering should be checked."
+                )
+            elif cause_name == "DNS resolution problem":
+                score = 65
+                explanation = (
+                    "DNS resolution failed or timed out. Confirm the DNS server "
+                    "and compare results with the connectivity tests."
+                )
+            else:
+                score = min(50 + evidence_count * 5, 70)
+                explanation = (
+                    "The diagnostic evidence warrants investigation, but the "
+                    "available observations do not establish a specific cause."
+                )
+
+            cause["priority_score"] = score
+            cause["priority_explanation"] = explanation
+
         if apipa_detected or statuses.get("dhcp") == "investigate":
             next_step = (
                 "Verify IP configuration and DHCP availability first, then "
@@ -408,6 +544,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "Investigate the listed failure areas using the supporting "
                 "findings and targeted diagnostic tests."
             )
+
         return {
             "status": "investigate",
             "finding": (
@@ -418,6 +555,7 @@ def correlate_findings(results: list[dict]) -> dict:
             "supporting_findings": supporting_findings,
             "next_step": next_step,
         }
+
     if any(
         status in {"inconclusive", "investigate"}
         for status in statuses.values()
@@ -435,6 +573,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "and repeat the relevant tests."
             ),
         }
+
     return {
         "status": "no_failure_detected",
         "finding": (
