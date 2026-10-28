@@ -1,4 +1,6 @@
+
 import ipaddress
+
 
 def correlate_findings(results: list[dict]) -> dict:
     """Combine diagnostic reports into an evidence-based assessment."""
@@ -48,37 +50,60 @@ def correlate_findings(results: list[dict]) -> dict:
         if isinstance(evidence, dict):
             return evidence
 
+        normalized = {}
         if isinstance(evidence, list):
-            return {
-                item.get("observation", ""): item.get("result")
-                for item in evidence
-                if isinstance(item, dict)
-            }
+            for item in evidence:
+                if not isinstance(item, dict):
+                    continue
+                label = item.get("observation", item.get("item", ""))
+                value = item.get("result", item.get("value"))
+                if label:
+                    normalized[label] = value
 
-        return {}
+        return normalized
 
     dhcp_evidence = get_evidence("dhcp")
     dns_evidence = get_evidence("dns")
     connectivity_evidence = get_evidence("connectivity")
 
-    ip_address = dhcp_evidence.get("IP address")
-    if ip_address in (None, "Not provided", ""):
+    ip_address = dhcp_evidence.get("IPv4 address")
+    if ip_address is None:
+        ip_address = dhcp_evidence.get("IP address")
+    if ip_address is None:
         ip_address = dhcp_evidence.get("ip_address")
 
-    gateway_reachable = connectivity_evidence.get("Gateway reachable")
+    gateway_reachable = connectivity_evidence.get("Gateway reachability")
+    if gateway_reachable is None:
+        gateway_reachable = connectivity_evidence.get("Gateway reachable")
     if gateway_reachable is None:
         gateway_reachable = connectivity_evidence.get("gateway_reachable")
 
-    external_reachable = connectivity_evidence.get("External target reachable")
+    external_reachable = connectivity_evidence.get("External reachability")
+    if external_reachable is None:
+        external_reachable = connectivity_evidence.get("External target reachable")
     if external_reachable is None:
         external_reachable = connectivity_evidence.get("external_reachable")
 
     dns_result = dns_evidence.get("Resolution result")
-    if dns_result in (None, "Not tested", ""):
+    if dns_result is None:
         dns_result = dns_evidence.get("resolution_result")
 
     if isinstance(dns_result, str):
         dns_result = dns_result.strip().lower()
+
+    def is_reachable(value) -> bool | None:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"reachable", "true", "yes", "success"}:
+                return True
+            if normalized in {"unreachable", "false", "no", "failed", "timeout"}:
+                return False
+        return None
+
+    gateway_reachable = is_reachable(gateway_reachable)
+    external_reachable = is_reachable(external_reachable)
 
     apipa_detected = False
     if isinstance(ip_address, str):
@@ -126,7 +151,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "cause": "External network reachability problem",
                 "reason": (
                     "The gateway responded, but the external target did not. "
-                    "Investigate routing, filtering, or the target itself; "
+                    "Investigate routing, filtering, or target availability; "
                     "a failed ping alone does not prove an outage."
                 ),
                 "confidence": "Possible",
@@ -145,7 +170,12 @@ def correlate_findings(results: list[dict]) -> dict:
             }
         )
 
-    if dns_result in {"failed", "timeout", "nxdomain"} or statuses.get("dns") == "investigate":
+    dns_failed = (
+        dns_result in {"failed", "timeout", "nxdomain"}
+        or statuses.get("dns") == "investigate"
+    )
+
+    if dns_failed:
         if gateway_reachable is True and external_reachable is True:
             reason = (
                 "DNS resolution failed while gateway and external reachability "
@@ -188,7 +218,7 @@ def correlate_findings(results: list[dict]) -> dict:
                 "Check the route beyond the gateway, filtering rules, and "
                 "external target availability."
             )
-        elif dns_result in {"failed", "timeout", "nxdomain"} or statuses.get("dns") == "investigate":
+        elif dns_failed:
             next_step = (
                 "Inspect the DNS response and test the configured DNS server "
                 "while confirming basic connectivity."
