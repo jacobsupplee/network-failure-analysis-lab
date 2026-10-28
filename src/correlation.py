@@ -172,6 +172,17 @@ def correlate_findings(results: list[dict]) -> dict:
             }
         )
     elif gateway_reachable is True and external_reachable is False:
+        external_supporting_evidence = [
+            "The default gateway responded to the reachability test.",
+            "The external target did not respond to the reachability test.",
+        ]
+
+        if routing_status == "route_present":
+            external_supporting_evidence.append(
+                "The routing diagnostic identified a default route, "
+                "but its presence does not confirm that the route is usable."
+            )
+
         likely_causes.append(
             {
                 "cause": "External network reachability problem",
@@ -181,10 +192,7 @@ def correlate_findings(results: list[dict]) -> dict:
                     "a failed ping alone does not prove an outage."
                 ),
                 "confidence": "Possible",
-                "supporting_evidence": [
-                    "The default gateway responded to the reachability test.",
-                    "The external target did not respond to the reachability test.",
-                ],
+                "supporting_evidence": external_supporting_evidence,
             }
         )
     elif statuses.get("connectivity") == "investigate":
