@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.diagnostics import analyze_dhcp
+from src.analyzers.dhcp import analyze_dhcp
 from src.scenario_loader import load_scenario
 
 ANALYZERS = {

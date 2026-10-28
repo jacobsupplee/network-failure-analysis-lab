@@ -1,6 +1,4 @@
-
-from src.diagnostics import analyze_dhcp
-
+from src.analyzers.dhcp import analyze_dhcp
 
 def test_apipa_address():
     # APIPA address suggests the workstation didn't get its normal DHCP configuration.
@@ -8,7 +6,6 @@ def test_apipa_address():
 
     assert result["status"] == "investigate"
     assert "APIPA" in result["finding"]
-
 
 def test_normal_address():
     # Having a normal-range IP address doesn't guarantee network connectivity.
@@ -23,7 +20,6 @@ def test_missing_address():
     result = analyze_dhcp({})
 
     assert result["status"] == "inconclusive"
-
 
 def test_invalid_address():
     # Invalid input should be handled without crashing.
@@ -42,7 +38,6 @@ def test_apipa_with_missing_network_settings():
     assert "APIPA" in result["finding"]
     assert "default gateway" in result["finding"]
     assert "DHCP server" in result["finding"]
-
 
 def test_apipa_with_reported_network_settings():
     result = analyze_dhcp({
