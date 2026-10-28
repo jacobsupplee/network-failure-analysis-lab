@@ -150,3 +150,42 @@ def collect_dns_resolution(hostname: str = "example.com") -> dict:
         "resolution_result": status,
         "details": output.strip(),
     }
+
+def collect_connectivity(
+    gateway_ip: str | None,
+    external_target: str = "1.1.1.1",
+) -> dict:
+    """Test gateway and external reachability using bounded ping requests."""
+
+    def ping(target: str) -> bool | None:
+        try:
+            result = subprocess.run(
+                ["ping", "-n", "1", "-w", "2000", target],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+        except OSError:
+            return None
+
+        output = (result.stdout + result.stderr).lower()
+
+        if "could not find host" in output or "bad value" in output:
+            return None
+
+        return result.returncode == 0
+
+    gateway_reachable = ping(gateway_ip) if gateway_ip else None
+    external_reachable = ping(external_target)
+
+    return {
+        "default_gateway": gateway_ip,
+        "gateway_reachable": gateway_reachable,
+        "external_target": external_target,
+        "external_reachable": external_reachable,
+    }

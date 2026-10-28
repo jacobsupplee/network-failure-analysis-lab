@@ -3,9 +3,11 @@ from pathlib import Path
 import streamlit as st
 
 from src.analysis_runner import run_analysis
+from src.analyzers.connectivity import analyze_connectivity
 from src.analyzers.dhcp import analyze_dhcp
 from src.analyzers.dns import analyze_dns
 from src.evidence_collection import (
+    collect_connectivity,
     collect_dns_resolution,
     collect_network_configuration,
 )
@@ -98,6 +100,7 @@ def display_analysis(result: dict, live: bool = False) -> None:
         else:
             st.warning("The result differs from the expected scenario outcome.")
 
+
 def run_live_scan() -> list[dict]:
     config = collect_network_configuration()
     adapter = config["primary_adapter"]
@@ -109,16 +112,19 @@ def run_live_scan() -> list[dict]:
             "dhcp_server": None,
         }
         dns_server = None
+        gateway_ip = None
     else:
+        gateway_ip = adapter["default_gateway"]
         dhcp_evidence = {
             "ip_address": adapter["ip_address"],
-            "default_gateway": adapter["default_gateway"],
+            "default_gateway": gateway_ip,
             "dhcp_server": adapter["dhcp_server"],
         }
         dns_servers = adapter["dns_servers"]
         dns_server = dns_servers[0] if dns_servers else None
 
     dns_result = collect_dns_resolution()
+    connectivity_evidence = collect_connectivity(gateway_ip)
 
     dns_evidence = {
         "hostname": dns_result["hostname"],
@@ -138,7 +144,13 @@ def run_live_scan() -> list[dict]:
             "analysis": analyze_dns(dns_evidence),
             "dns_details": dns_result["details"],
         },
+        {
+            "scenario_id": "LIVE-CONNECTIVITY",
+            "title": "Live connectivity and routing checks",
+            "analysis": analyze_connectivity(connectivity_evidence),
+        },
     ]
+
 
 st.set_page_config(
     page_title="Network Failure Analysis Lab",
@@ -172,8 +184,9 @@ if scan_mode == "Combined scan":
     )
 elif scan_mode == "Live Network Scan":
     st.write(
-        "Collects current Windows network configuration and tests DNS "
-        "resolution. This scan performs read-only diagnostic checks."
+        "Collects Windows network configuration, tests DNS resolution, "
+        "and checks gateway and external IP reachability. "
+        "These are read-only diagnostic checks."
     )
 else:
     st.write(f"Selected diagnostic: **{scan_mode}**")
@@ -219,7 +232,9 @@ if st.button("Run diagnostic", type="primary"):
 
                     if result["scenario_id"] == "LIVE-DNS":
                         with st.expander("DNS lookup details"):
-                            st.code(result["dns_details"] or "No output returned.")
+                            st.code(
+                                result["dns_details"] or "No output returned."
+                            )
 
         else:
             selected_scenarios = (
