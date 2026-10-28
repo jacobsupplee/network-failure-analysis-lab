@@ -1,0 +1,16 @@
+{
+  "scenario_id": "DNS-001",
+  "diagnostic_type": "dns",
+  "title": "DNS query times out",
+  "description": "A workstation cannot resolve a hostname because its DNS query times out.",
+  "symptoms": [
+    "The user cannot access a network resource by hostname.",
+    "The DNS query does not receive a response within the expected time."
+  ],
+  "evidence": {
+    "hostname": "example.com",
+    "dns_server": "192.168.1.10",
+    "resolution_result": "timeout"
+  },
+  "expected_status": "investigate"
+}
