@@ -195,6 +195,14 @@ def display_correlation(correlation: dict) -> None:
             st.markdown(f"**{cause['cause']}**")
             st.write(f"Reason: {cause['reason']}")
             st.write(f"Confidence: {cause['confidence']}")
+
+            supporting_evidence = cause.get("supporting_evidence", [])
+            if supporting_evidence:
+                st.write("**Supporting evidence**")
+                for evidence in supporting_evidence:
+                    st.markdown(f"- {evidence}")
+            else:
+                st.write("No specific supporting evidence was recorded.")
     else:
         st.write("No likely causes were identified from the supplied results.")
 

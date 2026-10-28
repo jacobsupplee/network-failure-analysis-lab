@@ -1,6 +1,4 @@
-
 import ipaddress
-
 
 def correlate_findings(results: list[dict]) -> dict:
     """Combine diagnostic reports into an evidence-based assessment."""
@@ -130,6 +128,11 @@ def correlate_findings(results: list[dict]) -> dict:
                 "cause": "DHCP or IP configuration problem",
                 "reason": reason,
                 "confidence": "Possible",
+                "supporting_evidence": [
+                    f"Reported IP address: {ip_address}"
+                    if ip_address is not None
+                    else "The DHCP diagnostic reported a condition requiring investigation."
+                ],
             }
         )
 
@@ -143,6 +146,9 @@ def correlate_findings(results: list[dict]) -> dict:
                     "is filtered."
                 ),
                 "confidence": "Possible",
+                "supporting_evidence": [
+                    "The default gateway did not respond to the reachability test."
+                ],
             }
         )
     elif gateway_reachable is True and external_reachable is False:
@@ -155,6 +161,10 @@ def correlate_findings(results: list[dict]) -> dict:
                     "a failed ping alone does not prove an outage."
                 ),
                 "confidence": "Possible",
+                "supporting_evidence": [
+                    "The default gateway responded to the reachability test.",
+                    "The external target did not respond to the reachability test.",
+                ],
             }
         )
     elif statuses.get("connectivity") == "investigate":
@@ -167,6 +177,9 @@ def correlate_findings(results: list[dict]) -> dict:
                     "the failing network path."
                 ),
                 "confidence": "Possible",
+                "supporting_evidence": [
+                    "The connectivity diagnostic reported a condition requiring investigation."
+                ],
             }
         )
 
@@ -194,11 +207,36 @@ def correlate_findings(results: list[dict]) -> dict:
                 "configured DNS server, and DNS query response."
             )
 
+        dns_supporting_evidence = [
+            f"DNS resolution result: {dns_result}"
+            if dns_result is not None
+            else "The DNS diagnostic reported a condition requiring investigation."
+        ]
+
+        if gateway_reachable is True:
+            dns_supporting_evidence.append(
+                "The default gateway responded to the reachability test."
+            )
+        elif gateway_reachable is False:
+            dns_supporting_evidence.append(
+                "The default gateway did not respond to the reachability test."
+            )
+
+        if external_reachable is True:
+            dns_supporting_evidence.append(
+                "The external target responded to the reachability test."
+            )
+        elif external_reachable is False:
+            dns_supporting_evidence.append(
+                "The external target did not respond to the reachability test."
+            )
+
         likely_causes.append(
             {
                 "cause": "DNS resolution problem",
                 "reason": reason,
                 "confidence": "Possible",
+                "supporting_evidence": dns_supporting_evidence,
             }
         )
 
