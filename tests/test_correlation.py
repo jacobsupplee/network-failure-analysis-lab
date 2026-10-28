@@ -341,3 +341,42 @@ def test_missing_default_route_is_correlated_with_other_findings():
         for cause in report["likely_causes"]
     )
     assert len(report["supporting_findings"]) == 2
+
+
+def test_likely_cause_includes_traceable_supporting_evidence():
+    results = [
+        {
+            "diagnostic_type": "routing",
+            "analysis": {
+                "status": "investigate",
+                "finding": "No IPv4 default route was found.",
+                "evidence": [
+                    {
+                        "observation": "Default route count",
+                        "result": 0,
+                    }
+                ],
+            },
+        }
+    ]
+
+    report = correlate_findings(results)
+
+    route_cause = next(
+        cause
+        for cause in report["likely_causes"]
+        if cause["cause"] == "Missing IPv4 default route"
+    )
+
+    assert route_cause["supporting_evidence"]
+    assert route_cause["supporting_evidence"][0] == (
+        "The routing diagnostic reported zero default routes."
+    )
+    assert route_cause["evidence_references"]
+    assert route_cause["evidence_references"][0] == {
+        "report_index": 0,
+        "diagnostic_type": "routing",
+        "finding": "No IPv4 default route was found.",
+        "observation": "Default route count",
+        "value": 0,
+    }
