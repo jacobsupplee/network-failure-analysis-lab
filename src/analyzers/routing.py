@@ -1,4 +1,5 @@
-from ipaddress import IPv4Address, AddressValueError
+from ipaddress import AddressValueError, IPv4Address
+
 from src.diagnostics import build_report
 
 def analyze_routing(data: dict) -> dict:
@@ -172,10 +173,85 @@ def analyze_routing(data: dict) -> dict:
                     ],
                 )
 
+    valid_metric_routes = [
+        route
+        for route in default_routes
+        if isinstance(route.get("metric"), (int, float))
+        and not isinstance(route.get("metric"), bool)
+        and route["metric"] >= 0
+    ]
+
+    if valid_metric_routes:
+        lowest_metric = min(
+            route["metric"] for route in valid_metric_routes
+        )
+        lowest_metric_routes = [
+            route
+            for route in valid_metric_routes
+            if route["metric"] == lowest_metric
+        ]
+
+        evidence.append(
+            {
+                "observation": "Lowest reported default-route metric",
+                "result": lowest_metric,
+            }
+        )
+
+        evidence.append(
+            {
+                "observation": "Routes with lowest reported metric",
+                "result": len(lowest_metric_routes),
+            }
+        )
+
+        for index, route in enumerate(lowest_metric_routes, start=1):
+            evidence.append(
+                {
+                    "observation": f"Lowest-metric route {index}",
+                    "result": {
+                        "gateway": route.get("gateway"),
+                        "interface": route.get("interface"),
+                        "metric": route["metric"],
+                    },
+                }
+            )
+
+        if len(valid_metric_routes) < len(default_routes):
+            evidence.append(
+                {
+                    "observation": "Route metric completeness",
+                    "result": (
+                        "Some default routes have missing or invalid metrics; "
+                        "comparison is limited to routes with valid metrics."
+                    ),
+                }
+            )
+
+        if len(lowest_metric_routes) > 1:
+            evidence.append(
+                {
+                    "observation": "Route metric comparison",
+                    "result": (
+                        "Multiple default routes share the lowest reported metric."
+                    ),
+                }
+            )
+    else:
+        evidence.append(
+            {
+                "observation": "Route metric analysis",
+                "result": "No valid default-route metrics were available.",
+            }
+        )
+
     return build_report(
         "route_present",
         "An IPv4 default route was identified in the supplied routing table.",
-        "Test reachability to the destination and verify that the selected route is appropriate.",
+        (
+            "Test destination reachability and verify route selection using "
+            "route metrics, interface metrics, and destination matching."
+        ),
         evidence,
         [],
         [
@@ -185,11 +261,15 @@ def analyze_routing(data: dict) -> dict:
             },
             {
                 "test": "Inspect route selection",
-                "purpose": "Confirm which route and gateway would be used for the destination.",
+                "purpose": (
+                    "Compare route metrics and interface metrics to determine "
+                    "which route is likely to be preferred."
+                ),
             },
         ],
         [
             "Confirm that the default route belongs to the intended network adapter.",
             "Verify destination reachability using an appropriate protocol.",
+            "Do not assume the lowest route metric alone proves which route Windows selects.",
         ],
     )

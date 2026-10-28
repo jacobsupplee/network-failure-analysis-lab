@@ -172,3 +172,97 @@ def test_multiple_default_routes_are_reported_without_automatic_failure():
         item["observation"] == "Default route count" and item["result"] == 2
         for item in report["evidence"]
     )
+
+def test_lowest_default_route_metric_is_identified():
+    report = analyze_routing(
+        {
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 30,
+                },
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "10.0.0.1",
+                    "interface": "10.0.0.179",
+                    "metric": 10,
+                },
+            ]
+        }
+    )
+
+    assert any(
+        item["observation"] == "Lowest reported default-route metric"
+        and item["result"] == 10
+        for item in report["evidence"]
+    )
+    assert any(
+        item["observation"] == "Lowest-metric route 1"
+        and item["result"]["gateway"] == "10.0.0.1"
+        for item in report["evidence"]
+    )
+
+def test_equal_lowest_metrics_are_reported_as_a_tie():
+    report = analyze_routing(
+        {
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 10,
+                },
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "10.0.0.1",
+                    "interface": "10.0.0.179",
+                    "metric": 10,
+                },
+            ]
+        }
+    )
+
+    assert any(
+        item["observation"] == "Routes with lowest reported metric"
+        and item["result"] == 2
+        for item in report["evidence"]
+    )
+    assert any(
+        item["observation"] == "Route metric comparison"
+        and "Multiple default routes" in item["result"]
+        for item in report["evidence"]
+    )
+
+def test_invalid_default_route_metrics_are_not_treated_as_zero():
+    report = analyze_routing(
+        {
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": None,
+                },
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "10.0.0.1",
+                    "interface": "10.0.0.179",
+                    "metric": "invalid",
+                },
+            ]
+        }
+    )
+
+    assert any(
+        item["observation"] == "Route metric analysis"
+        and "No valid" in item["result"]
+        for item in report["evidence"]
+    )
