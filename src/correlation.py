@@ -21,6 +21,7 @@ def correlate_findings(results: list[dict]) -> dict:
             "finding": "No usable diagnostic reports were provided.",
             "likely_causes": [],
             "supporting_findings": [],
+            "conflicts": [],
             "next_step": "Run one or more diagnostics and collect their results.",
         }
 
@@ -49,7 +50,10 @@ def correlate_findings(results: list[dict]) -> dict:
             for item in evidence:
                 if not isinstance(item, dict):
                     continue
-                label = item.get("observation", item.get("item", ""))
+                label = item.get(
+                    "observation",
+                    item.get("item", item.get("check", "")),
+                )
                 value = item.get("result", item.get("value"))
                 if label:
                     normalized[label] = value
@@ -69,6 +73,60 @@ def correlate_findings(results: list[dict]) -> dict:
             if normalized in {"unreachable", "false", "no", "failed", "timeout"}:
                 return False
         return None
+
+    conflicts = []
+    gateway_observations = []
+
+    for report in reports:
+        if report["diagnostic_type"] != "connectivity":
+            continue
+        evidence = report["evidence"]
+        if isinstance(evidence, dict):
+            items = [
+                {"observation": key, "result": value}
+                for key, value in evidence.items()
+            ]
+        elif isinstance(evidence, list):
+            items = evidence
+        else:
+            continue
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            label = str(
+                item.get(
+                    "observation",
+                    item.get("item", item.get("check", "")),
+                )
+            ).strip().lower()
+            if label not in {
+                "gateway reachability",
+                "gateway reachable",
+                "gateway_reachable",
+            }:
+                continue
+            value = is_reachable(item.get("result", item.get("value")))
+            if value is not None:
+                gateway_observations.append(value)
+
+    gateway_conflict = (
+        True in gateway_observations
+        and False in gateway_observations
+    )
+
+    if gateway_conflict:
+        conflicts.append(
+            {
+                "type": "contradictory_evidence",
+                "description": (
+                    "Gateway reachability results conflict: some observations "
+                    "report the gateway as reachable while others report it "
+                    "as unreachable. Repeat the test and compare the timestamps "
+                    "and network conditions."
+                ),
+            }
+        )
 
     dhcp_evidence = get_evidence("dhcp")
     dns_evidence = get_evidence("dns")
@@ -91,6 +149,9 @@ def correlate_findings(results: list[dict]) -> dict:
     if gateway_reachable is None:
         gateway_reachable = connectivity_evidence.get("gateway_reachable")
     gateway_reachable = is_reachable(gateway_reachable)
+
+    if gateway_conflict:
+        gateway_reachable = None
 
     external_reachable = connectivity_evidence.get("External reachability")
     if external_reachable is None:
@@ -506,10 +567,24 @@ def correlate_findings(results: list[dict]) -> dict:
                     "available observations do not establish a specific cause."
                 )
 
+            if gateway_conflict:
+                cause["confidence"] = "Low"
+                score = min(score, 50)
+                explanation += (
+                    " Gateway observations conflict, so this assessment should "
+                    "be treated cautiously until reachability is retested."
+                )
+
             cause["priority_score"] = score
             cause["priority_explanation"] = explanation
 
-        if apipa_detected or statuses.get("dhcp") == "investigate":
+        if conflicts:
+            next_step = (
+                "Repeat the conflicting diagnostic tests and compare their "
+                "results under the same network conditions before selecting "
+                "a root cause."
+            )
+        elif apipa_detected or statuses.get("dhcp") == "investigate":
             next_step = (
                 "Verify IP configuration and DHCP availability first, then "
                 "repeat connectivity and DNS tests."
@@ -553,6 +628,7 @@ def correlate_findings(results: list[dict]) -> dict:
             ),
             "likely_causes": likely_causes,
             "supporting_findings": supporting_findings,
+            "conflicts": conflicts,
             "next_step": next_step,
         }
 
@@ -568,6 +644,7 @@ def correlate_findings(results: list[dict]) -> dict:
             ),
             "likely_causes": [],
             "supporting_findings": supporting_findings,
+            "conflicts": conflicts,
             "next_step": (
                 "Review the diagnostic findings, collect additional evidence, "
                 "and repeat the relevant tests."
@@ -582,6 +659,7 @@ def correlate_findings(results: list[dict]) -> dict:
         ),
         "likely_causes": [],
         "supporting_findings": supporting_findings,
+        "conflicts": conflicts,
         "next_step": (
             "If the user still experiences problems, test the specific "
             "application or network service involved."
