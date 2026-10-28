@@ -201,7 +201,7 @@ def test_lowest_default_route_metric_is_identified():
         for item in report["evidence"]
     )
     assert any(
-        item["observation"] == "Lowest-metric route 1"
+        item["observation"] == "Lowest-metric default route 1"
         and item["result"]["gateway"] == "10.0.0.1"
         for item in report["evidence"]
     )
@@ -233,11 +233,6 @@ def test_equal_lowest_metrics_are_reported_as_a_tie():
         and item["result"] == 2
         for item in report["evidence"]
     )
-    assert any(
-        item["observation"] == "Route metric comparison"
-        and "Multiple default routes" in item["result"]
-        for item in report["evidence"]
-    )
 
 def test_invalid_default_route_metrics_are_not_treated_as_zero():
     report = analyze_routing(
@@ -264,5 +259,91 @@ def test_invalid_default_route_metrics_are_not_treated_as_zero():
     assert any(
         item["observation"] == "Route metric analysis"
         and "No valid" in item["result"]
+        for item in report["evidence"]
+    )
+
+def test_longest_matching_prefix_is_preferred_over_default_route():
+    report = analyze_routing(
+        {
+            "destination": "192.168.1.50",
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "10.0.0.1",
+                    "interface": "10.0.0.179",
+                    "metric": 5,
+                },
+                {
+                    "destination": "192.168.1.0",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 50,
+                },
+            ],
+        }
+    )
+
+    assert any(
+        item["observation"] == "Longest matching prefix length"
+        and item["result"] == 24
+        for item in report["evidence"]
+    )
+    assert any(
+        item["observation"] == "Best matching route candidates"
+        and item["result"][0]["gateway"] == "192.168.1.1"
+        for item in report["evidence"]
+    )
+
+def test_route_metric_breaks_tie_between_equally_specific_routes():
+    report = analyze_routing(
+        {
+            "destination": "192.168.1.50",
+            "routes": [
+                {
+                    "destination": "192.168.1.0",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 20,
+                },
+                {
+                    "destination": "192.168.1.0",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.1.2",
+                    "interface": "192.168.1.26",
+                    "metric": 10,
+                },
+            ],
+        }
+    )
+
+    assert any(
+        item["observation"] == "Best matching route candidates"
+        and len(item["result"]) == 1
+        and item["result"][0]["gateway"] == "192.168.1.2"
+        for item in report["evidence"]
+    )
+
+def test_invalid_destination_does_not_crash_routing_analysis():
+    report = analyze_routing(
+        {
+            "destination": "not-an-ip",
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                }
+            ],
+        }
+    )
+
+    assert report["status"] == "route_present"
+    assert any(
+        item["observation"] == "Destination route analysis"
         for item in report["evidence"]
     )

@@ -1,6 +1,31 @@
-from ipaddress import AddressValueError, IPv4Address
-
+from ipaddress import AddressValueError, IPv4Address, IPv4Network, NetmaskValueError
 from src.diagnostics import build_report
+
+def parse_route_network(route: dict) -> IPv4Network | None:
+    """Parse a route destination and netmask into an IPv4 network."""
+    destination = route.get("destination")
+
+    if not isinstance(destination, str):
+        return None
+
+    try:
+        if "/" in destination:
+            return IPv4Network(destination, strict=False)
+
+        netmask = route.get("netmask", "0.0.0.0")
+        return IPv4Network(f"{destination}/{netmask}", strict=False)
+    except (AddressValueError, NetmaskValueError, TypeError, ValueError):
+        return None
+
+def valid_route_metric(route: dict) -> bool:
+    """Return whether a route has a usable nonnegative numeric metric."""
+    metric = route.get("metric")
+
+    return (
+        isinstance(metric, (int, float))
+        and not isinstance(metric, bool)
+        and metric >= 0
+    )
 
 def analyze_routing(data: dict) -> dict:
     """Analyze routing evidence for a possible network path problem."""
@@ -24,19 +49,32 @@ def analyze_routing(data: dict) -> dict:
             ["Confirm that routing table collection completed successfully."],
         )
 
-    evidence = [
-        {
-            "observation": "Route count",
-            "result": len(routes),
-        }
+    valid_routes = [
+        (route, parse_route_network(route))
+        for route in routes
+        if isinstance(route, dict)
+    ]
+    valid_routes = [
+        (route, network)
+        for route, network in valid_routes
+        if network is not None
     ]
 
     default_routes = [
         route
-        for route in routes
-        if isinstance(route, dict)
-        and route.get("destination") in {"0.0.0.0", "0.0.0.0/0"}
-        and route.get("netmask", "0.0.0.0") == "0.0.0.0"
+        for route, network in valid_routes
+        if network.prefixlen == 0
+    ]
+
+    evidence = [
+        {
+            "observation": "Route count",
+            "result": len(routes),
+        },
+        {
+            "observation": "Default route count",
+            "result": len(default_routes),
+        },
     ]
 
     if default_gateway:
@@ -47,14 +85,36 @@ def analyze_routing(data: dict) -> dict:
             }
         )
 
-    evidence.append(
-        {
-            "observation": "Default route count",
-            "result": len(default_routes),
-        }
-    )
+    target_ip = None
 
-    if not default_routes:
+    if destination:
+        evidence.append(
+            {
+                "observation": "Test destination",
+                "result": destination,
+            }
+        )
+
+        try:
+            target_ip = IPv4Address(destination)
+        except (AddressValueError, TypeError):
+            evidence.append(
+                {
+                    "observation": "Destination route analysis",
+                    "result": "Skipped because the destination is not a valid IPv4 address.",
+                }
+            )
+
+    matching_routes = []
+
+    if target_ip is not None:
+        matching_routes = [
+            (route, network)
+            for route, network in valid_routes
+            if target_ip in network
+        ]
+
+    if not default_routes and not matching_routes:
         return build_report(
             "investigate",
             "No IPv4 default route was identified in the supplied routing table.",
@@ -84,14 +144,6 @@ def analyze_routing(data: dict) -> dict:
                 "Confirm whether the active adapter requires an IPv4 default route.",
                 "Repeat connectivity tests after any routing correction.",
             ],
-        )
-
-    if destination:
-        evidence.append(
-            {
-                "observation": "Test destination",
-                "result": destination,
-            }
         )
 
     route_gateways = [
@@ -173,12 +225,115 @@ def analyze_routing(data: dict) -> dict:
                     ],
                 )
 
+    if target_ip is not None:
+        if not matching_routes:
+            evidence.append(
+                {
+                    "observation": "Destination route match",
+                    "result": "No matching IPv4 route was found.",
+                }
+            )
+        else:
+            longest_prefix = max(
+                network.prefixlen
+                for _, network in matching_routes
+            )
+            best_prefix_routes = [
+                (route, network)
+                for route, network in matching_routes
+                if network.prefixlen == longest_prefix
+            ]
+
+            evidence.append(
+                {
+                    "observation": "Longest matching prefix length",
+                    "result": longest_prefix,
+                }
+            )
+            evidence.append(
+                {
+                    "observation": "Routes matching destination",
+                    "result": len(matching_routes),
+                }
+            )
+
+            metric_routes = [
+                (route, network)
+                for route, network in best_prefix_routes
+                if valid_route_metric(route)
+            ]
+
+            if metric_routes:
+                lowest_metric = min(
+                    route["metric"]
+                    for route, _ in metric_routes
+                )
+                selected_candidates = [
+                    (route, network)
+                    for route, network in metric_routes
+                    if route["metric"] == lowest_metric
+                ]
+
+                evidence.append(
+                    {
+                        "observation": "Lowest metric among longest-prefix routes",
+                        "result": lowest_metric,
+                    }
+                )
+            else:
+                selected_candidates = best_prefix_routes
+                evidence.append(
+                    {
+                        "observation": "Destination route metric analysis",
+                        "result": (
+                            "No valid metrics were available for the "
+                            "longest matching routes."
+                        ),
+                    }
+                )
+
+            evidence.append(
+                {
+                    "observation": "Best matching route candidates",
+                    "result": [
+                        {
+                            "network": str(network),
+                            "gateway": route.get("gateway"),
+                            "interface": route.get("interface"),
+                            "metric": route.get("metric"),
+                        }
+                        for route, network in selected_candidates
+                    ],
+                }
+            )
+
+            if len(selected_candidates) > 1:
+                evidence.append(
+                    {
+                        "observation": "Route selection certainty",
+                        "result": (
+                            "Multiple candidates remain. Interface metrics "
+                            "or additional Windows route-selection details "
+                            "may be needed to distinguish them."
+                        ),
+                    }
+                )
+            else:
+                evidence.append(
+                    {
+                        "observation": "Route selection certainty",
+                        "result": (
+                            "One best candidate was identified from the "
+                            "supplied prefix and metric data; actual "
+                            "Windows route selection is not independently confirmed."
+                        ),
+                    }
+                )
+
     valid_metric_routes = [
         route
         for route in default_routes
-        if isinstance(route.get("metric"), (int, float))
-        and not isinstance(route.get("metric"), bool)
-        and route["metric"] >= 0
+        if valid_route_metric(route)
     ]
 
     if valid_metric_routes:
@@ -197,7 +352,6 @@ def analyze_routing(data: dict) -> dict:
                 "result": lowest_metric,
             }
         )
-
         evidence.append(
             {
                 "observation": "Routes with lowest reported metric",
@@ -208,33 +362,12 @@ def analyze_routing(data: dict) -> dict:
         for index, route in enumerate(lowest_metric_routes, start=1):
             evidence.append(
                 {
-                    "observation": f"Lowest-metric route {index}",
+                    "observation": f"Lowest-metric default route {index}",
                     "result": {
                         "gateway": route.get("gateway"),
                         "interface": route.get("interface"),
                         "metric": route["metric"],
                     },
-                }
-            )
-
-        if len(valid_metric_routes) < len(default_routes):
-            evidence.append(
-                {
-                    "observation": "Route metric completeness",
-                    "result": (
-                        "Some default routes have missing or invalid metrics; "
-                        "comparison is limited to routes with valid metrics."
-                    ),
-                }
-            )
-
-        if len(lowest_metric_routes) > 1:
-            evidence.append(
-                {
-                    "observation": "Route metric comparison",
-                    "result": (
-                        "Multiple default routes share the lowest reported metric."
-                    ),
                 }
             )
     else:
@@ -245,13 +378,28 @@ def analyze_routing(data: dict) -> dict:
             }
         )
 
+    if default_routes:
+        status = "route_present"
+        finding = "An IPv4 default route was identified in the supplied routing table."
+        next_step = (
+            "Review the matching route evidence and test destination reachability. "
+            "Route metrics alone do not prove the route Windows selects."
+        )
+    else:
+        status = "route_present"
+        finding = (
+            "No IPv4 default route was identified, but destination-specific "
+            "route evidence was available for analysis."
+        )
+        next_step = (
+            "Review the destination-specific route candidates and verify whether "
+            "the available routes provide the required network reachability."
+        )
+
     return build_report(
-        "route_present",
-        "An IPv4 default route was identified in the supplied routing table.",
-        (
-            "Test destination reachability and verify route selection using "
-            "route metrics, interface metrics, and destination matching."
-        ),
+        status,
+        finding,
+        next_step,
         evidence,
         [],
         [
@@ -262,14 +410,14 @@ def analyze_routing(data: dict) -> dict:
             {
                 "test": "Inspect route selection",
                 "purpose": (
-                    "Compare route metrics and interface metrics to determine "
-                    "which route is likely to be preferred."
+                    "Compare matching prefixes, route metrics, and interface "
+                    "metrics to assess the likely route for the destination."
                 ),
             },
         ],
         [
             "Confirm that the default route belongs to the intended network adapter.",
             "Verify destination reachability using an appropriate protocol.",
-            "Do not assume the lowest route metric alone proves which route Windows selects.",
+            "Compare the reported route with Windows route-selection behavior when necessary.",
         ],
     )
