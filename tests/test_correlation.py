@@ -253,3 +253,91 @@ def test_successful_diagnostics_report_no_failure_detected():
 
     assert report["status"] == "no_failure_detected"
     assert report["likely_causes"] == []
+
+def test_missing_default_route_is_correlated():
+    results = [
+        {
+            "diagnostic_type": "routing",
+            "analysis": {
+                "status": "investigate",
+                "finding": "No IPv4 default route was found.",
+                "evidence": [
+                    {
+                        "observation": "Default route count",
+                        "result": 0,
+                    }
+                ],
+            },
+        }
+    ]
+
+    report = correlate_findings(results)
+
+    assert report["status"] == "investigate"
+    assert any(
+        cause["cause"] == "Missing IPv4 default route"
+        for cause in report["likely_causes"]
+    )
+
+def test_routing_without_default_route_count_does_not_assume_missing_route():
+    results = [
+        {
+            "diagnostic_type": "routing",
+            "analysis": {
+                "status": "investigate",
+                "finding": "Routing requires investigation.",
+                "evidence": [],
+            },
+        }
+    ]
+
+    report = correlate_findings(results)
+
+    assert report["status"] == "inconclusive"
+    assert not any(
+        cause["cause"] == "Missing IPv4 default route"
+        for cause in report["likely_causes"]
+    )
+
+def test_missing_default_route_is_correlated_with_other_findings():
+    results = [
+        {
+            "diagnostic_type": "routing",
+            "analysis": {
+                "status": "investigate",
+                "finding": "No IPv4 default route was found.",
+                "evidence": [
+                    {
+                        "observation": "Default route count",
+                        "result": 0,
+                    }
+                ],
+            },
+        },
+        {
+            "diagnostic_type": "connectivity",
+            "analysis": {
+                "status": "investigate",
+                "finding": "The external target was unreachable.",
+                "evidence": [
+                    {
+                        "item": "Gateway reachable",
+                        "value": True,
+                    },
+                    {
+                        "item": "External target reachable",
+                        "value": False,
+                    },
+                ],
+            },
+        },
+    ]
+
+    report = correlate_findings(results)
+
+    assert report["status"] == "investigate"
+    assert any(
+        cause["cause"] == "Missing IPv4 default route"
+        for cause in report["likely_causes"]
+    )
+    assert len(report["supporting_findings"]) == 2

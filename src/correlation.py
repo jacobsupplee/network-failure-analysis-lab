@@ -63,6 +63,7 @@ def correlate_findings(results: list[dict]) -> dict:
     dhcp_evidence = get_evidence("dhcp")
     dns_evidence = get_evidence("dns")
     connectivity_evidence = get_evidence("connectivity")
+    routing_evidence = get_evidence("routing")
 
     ip_address = dhcp_evidence.get("IPv4 address")
     if ip_address is None:
@@ -115,6 +116,25 @@ def correlate_findings(results: list[dict]) -> dict:
             pass
 
     likely_causes = []
+    routing_status = statuses.get("routing")
+    default_route_count = routing_evidence.get("Default route count")
+
+    if routing_status == "investigate" and default_route_count == 0:
+        likely_causes.append(
+            {
+                "cause": "Missing IPv4 default route",
+                "reason": (
+                    "The routing diagnostic found no IPv4 default route. "
+                    "Without a suitable default route, traffic destined for "
+                    "networks outside directly connected routes may not "
+                    "reach its destination."
+                ),
+                "confidence": "Possible",
+                "supporting_evidence": [
+                    "The routing diagnostic reported zero default routes."
+                ],
+            }
+        )
 
     if apipa_detected or statuses.get("dhcp") == "investigate":
         reason = (
@@ -246,6 +266,11 @@ def correlate_findings(results: list[dict]) -> dict:
                 "Verify IP configuration and DHCP availability first, then "
                 "repeat connectivity and DNS tests."
             )
+        elif routing_status == "investigate" and default_route_count == 0:
+            next_step = (
+                "Inspect the IPv4 routing table and verify that the correct "
+                "default route is configured before repeating connectivity tests."
+            )
         elif gateway_reachable is False:
             next_step = (
                 "Verify local network access and default gateway reachability. "
@@ -278,18 +303,21 @@ def correlate_findings(results: list[dict]) -> dict:
             "next_step": next_step,
         }
 
-    if any(status == "inconclusive" for status in statuses.values()):
+    if any(
+        status in {"inconclusive", "investigate"}
+        for status in statuses.values()
+    ):
         return {
             "status": "inconclusive",
             "finding": (
-                "The available evidence does not establish a network failure, "
-                "and some diagnostic results are inconclusive."
+                "The available evidence does not establish a specific root "
+                "cause, but one or more diagnostics require further investigation."
             ),
             "likely_causes": [],
             "supporting_findings": supporting_findings,
             "next_step": (
-                "Collect the missing evidence and repeat the inconclusive "
-                "diagnostics."
+                "Review the diagnostic findings, collect additional evidence, "
+                "and repeat the relevant tests."
             ),
         }
 
