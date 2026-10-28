@@ -53,6 +53,9 @@ def test_dns_failure_with_working_connectivity_prioritizes_dns():
             "analysis": {
                 "status": "investigate",
                 "finding": "DNS resolution timed out.",
+                "evidence": [
+                    {"observation": "Resolution result", "result": "timeout"},
+                ],
             },
         },
         {
@@ -60,6 +63,10 @@ def test_dns_failure_with_working_connectivity_prioritizes_dns():
             "analysis": {
                 "status": "connected",
                 "finding": "Gateway and external target responded.",
+                "evidence": [
+                    {"observation": "Gateway reachable", "result": True},
+                    {"observation": "External target reachable", "result": True},
+                ],
             },
         },
     ]
@@ -73,8 +80,8 @@ def test_dns_failure_with_working_connectivity_prioritizes_dns():
     )
 
     assert report["status"] == "investigate"
-    assert "priority" in dns_cause["reason"]
-    assert "DNS server itself" in dns_cause["reason"]
+    assert "Prioritize DNS investigation" in dns_cause["reason"]
+    assert "DNS server" in dns_cause["reason"]
 
 def test_dhcp_and_dns_failures_recommend_configuration_first():
     results = [
@@ -83,6 +90,9 @@ def test_dhcp_and_dns_failures_recommend_configuration_first():
             "analysis": {
                 "status": "investigate",
                 "finding": "The workstation has an APIPA address.",
+                "evidence": [
+                    {"observation": "IP address", "result": "169.254.12.34"},
+                ],
             },
         },
         {
@@ -90,6 +100,9 @@ def test_dhcp_and_dns_failures_recommend_configuration_first():
             "analysis": {
                 "status": "investigate",
                 "finding": "DNS resolution timed out.",
+                "evidence": [
+                    {"observation": "Resolution result", "result": "timeout"},
+                ],
             },
         },
     ]
@@ -97,6 +110,5 @@ def test_dhcp_and_dns_failures_recommend_configuration_first():
     report = correlate_findings(results)
 
     assert report["status"] == "investigate"
-    assert "DHCP and IP configuration first" in report["next_step"]
+    assert "DHCP availability first" in report["next_step"]
     assert len(report["likely_causes"]) == 2
-
