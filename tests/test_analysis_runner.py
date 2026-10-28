@@ -59,3 +59,28 @@ def test_run_analysis_on_refused_tcp_port(tmp_path):
         "Service unavailable or connection actively rejected"
     )
     assert result["matches_expected"] is True
+
+def test_run_analysis_on_unavailable_dns_lookup(tmp_path):
+    scenario = {
+        "scenario_id": "DNS-002",
+        "diagnostic_type": "dns",
+        "title": "DNS lookup utility is unavailable",
+        "description": "The DNS test could not run because the lookup utility was unavailable.",
+        "evidence": {
+            "hostname": "example.com",
+            "dns_server": "192.0.2.53",
+            "resolution_result": "unavailable",
+        },
+        "expected_status": "inconclusive",
+    }
+    scenario_path = tmp_path / "dns_unavailable.json"
+    scenario_path.write_text(json.dumps(scenario), encoding="utf-8")
+
+    result = run_analysis(scenario_path)
+
+    assert result["scenario_id"] == "DNS-002"
+    assert result["diagnostic_type"] == "dns"
+    assert result["analysis"]["status"] == "inconclusive"
+    assert result["analysis"]["hypotheses"] == []
+    assert result["matches_expected"] is True
+
