@@ -33,6 +33,25 @@ The test suite also covers routing, TCP outcomes, firewall rule matching, eviden
 
 Run either scenario from the app's diagnostic-mode selector. The scenario runner compares the analyzer's actual status with `expected_status`; a mismatch is reported rather than treated as a passing scenario. These are synthetic examples, so they are repeatable without deliberately breaking the machine's network connection.
 
+## Example diagnostic output
+
+For the bundled DHCP scenario, the analyzer identifies the APIPA address and missing configuration evidence, then recommends specific checks rather than claiming a confirmed root cause.
+
+```text
+Status: investigate
+Finding: The workstation has an APIPA address, and no default gateway and DHCP server was reported.
+Possible causes:
+- DHCP server unavailable or unreachable
+- Client or network configuration issue
+
+Recommended next tests:
+- Check the network adapter and link state
+- Run ipconfig /all
+- Inspect DHCP server availability and scope
+```
+
+The wording above is illustrative; the application displays the full evidence, confidence labels, next steps, and verification checklist. An APIPA address is a clue that normal DHCP configuration may not have been received, not proof of which component failed.
+
 ## Requirements
 
 - Python 3.10 or newer
