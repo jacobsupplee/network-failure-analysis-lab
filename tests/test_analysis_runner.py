@@ -152,3 +152,36 @@ def test_run_analysis_on_default_gateway_mismatch(tmp_path):
     )
     assert result["matches_expected"] is True
 
+
+
+def test_run_analysis_on_valid_default_route(tmp_path):
+    scenario = {
+        "scenario_id": "ROUTE-003",
+        "diagnostic_type": "routing",
+        "title": "Default route is available",
+        "description": "The routing table contains a valid IPv4 default route.",
+        "evidence": {
+            "destination": "1.1.1.1",
+            "default_gateway": "192.168.1.1",
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                }
+            ],
+        },
+        "expected_status": "route_present",
+    }
+    scenario_path = tmp_path / "valid_default_route.json"
+    scenario_path.write_text(json.dumps(scenario), encoding="utf-8")
+
+    result = run_analysis(scenario_path)
+
+    assert result["scenario_id"] == "ROUTE-003"
+    assert result["diagnostic_type"] == "routing"
+    assert result["analysis"]["status"] == "route_present"
+    assert result["analysis"]["hypotheses"] == []
+    assert result["matches_expected"] is True
