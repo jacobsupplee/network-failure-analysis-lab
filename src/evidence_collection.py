@@ -1,3 +1,4 @@
+import json
 import re
 import socket
 import subprocess
@@ -317,3 +318,70 @@ def collect_tcp_connection(
             evidence["result"] = "error"
 
     return evidence
+
+
+
+def collect_firewall_profiles() -> dict:
+    """Read the enabled state of Windows Firewall's three network profiles."""
+    command = (
+        "Get-NetFirewallProfile | "
+        "Select-Object Name, Enabled | ConvertTo-Json -Compress"
+    )
+
+    try:
+        result = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                command,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("Windows Firewall profile inspection timed out.") from error
+    except OSError as error:
+        raise RuntimeError(f"Could not run PowerShell to inspect Windows Firewall: {error}") from error
+
+    if result.returncode != 0:
+        message = result.stderr.strip() or f"exit code {result.returncode}"
+        raise RuntimeError(f"Windows Firewall profile inspection failed: {message}")
+
+    try:
+        profiles = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Windows Firewall returned invalid or empty JSON.") from error
+
+    if isinstance(profiles, dict):
+        profiles = [profiles]
+
+    if not isinstance(profiles, list) or not profiles:
+        raise RuntimeError("Windows Firewall returned no profile data.")
+
+    normalized_profiles = []
+    for profile in profiles:
+        if not isinstance(profile, dict) or not isinstance(profile.get("Name"), str):
+            raise RuntimeError("Windows Firewall returned an invalid profile record.")
+
+        enabled = profile.get("Enabled")
+        if isinstance(enabled, str):
+            enabled = enabled.strip().lower() == "true" if enabled.strip().lower() in {"true", "false"} else None
+        elif not isinstance(enabled, bool):
+            enabled = None
+
+        normalized_profiles.append({
+            "name": profile["Name"],
+            "enabled": enabled,
+        })
+
+    return {
+        "source": "Windows Get-NetFirewallProfile",
+        "profiles": normalized_profiles,
+        "raw_output": result.stdout.strip(),
+    }

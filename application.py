@@ -4,6 +4,7 @@ import streamlit as st
 
 from src.analyzers.connectivity import analyze_connectivity
 from src.analyzers.dhcp import analyze_dhcp
+from src.analyzers.firewall import analyze_firewall
 from src.analyzers.dns import analyze_dns
 from src.analyzers.ports import analyze_port
 from src.analyzers.routing import analyze_routing
@@ -13,6 +14,7 @@ from src.diagnostics import build_report
 from src.evidence_collection import (
     collect_connectivity,
     collect_dns_resolution,
+    collect_firewall_profiles,
     collect_network_configuration,
     collect_routing_table,
     collect_tcp_connection,
@@ -31,6 +33,7 @@ STATUS_LABELS = {
     "reachable": "Reachable",
     "route_present": "Route present",
     "no_apipa": "No APIPA address detected",
+    "profiles_enabled": "Firewall profiles enabled",
     "investigate": "Investigation required",
     "inconclusive": "Inconclusive",
 }
@@ -41,7 +44,7 @@ def status_label(status: str) -> str:
 
 
 def show_status_message(status: str, message: str) -> None:
-    if status in {"healthy", "no_failure_detected", "resolved", "connected", "reachable", "route_present", "no_apipa"}:
+    if status in {"healthy", "no_failure_detected", "resolved", "connected", "reachable", "route_present", "no_apipa", "profiles_enabled"}:
         st.success(message)
     elif status == "investigate":
         st.warning(message)
@@ -278,6 +281,27 @@ def run_live_scan(
             "ports",
             tcp_analysis,
             tcp_details,
+        )
+    )
+
+    try:
+        firewall_data = collect_firewall_profiles()
+        firewall_analysis = analyze_firewall(firewall_data)
+        firewall_details = firewall_data.get("raw_output")
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
+        firewall_analysis = make_inconclusive_report(
+            f"Windows Firewall profile collection failed: {error}",
+            "Run the scan on Windows and verify PowerShell access to firewall profile settings.",
+        )
+        firewall_details = str(error)
+
+    results.append(
+        make_live_result(
+            "LIVE-FIREWALL",
+            "Windows Firewall Profiles",
+            "firewall",
+            firewall_analysis,
+            firewall_details,
         )
     )
 
