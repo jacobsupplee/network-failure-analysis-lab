@@ -25,6 +25,8 @@ SCENARIOS = {
     "DHCP diagnostic": Path("scenarios/apipa_dhcp.json"),
     "DNS diagnostic": Path("scenarios/dns_failure.json"),
     "TCP port refused": Path("scenarios/tcp_refused.json"),
+    "Missing default route": Path("scenarios/missing_default_route.json"),
+    "Default gateway mismatch": Path("scenarios/default_gateway_mismatch.json"),
 }
 
 STATUS_LABELS = {
@@ -406,6 +408,8 @@ mode = st.selectbox(
         "DHCP diagnostic",
         "DNS diagnostic",
         "TCP port refused",
+        "Missing default route",
+        "Default gateway mismatch",
         "Combined scan",
         "Live Network Scan",
     ],

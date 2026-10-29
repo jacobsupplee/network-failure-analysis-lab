@@ -1,0 +1,23 @@
+{
+  "scenario_id": "ROUTE-001",
+  "diagnostic_type": "routing",
+  "title": "IPv4 default route is missing",
+  "description": "The routing table contains a local subnet route but no IPv4 default route for reaching external networks.",
+  "symptoms": [
+    "The workstation may reach local subnet devices but fail to reach off-subnet destinations."
+  ],
+  "evidence": {
+    "destination": "1.1.1.1",
+    "default_gateway": "192.168.1.1",
+    "routes": [
+      {
+        "destination": "192.168.1.0",
+        "netmask": "255.255.255.0",
+        "gateway": "0.0.0.0",
+        "interface": "192.168.1.25",
+        "metric": 25
+      }
+    ]
+  },
+  "expected_status": "investigate"
+}
