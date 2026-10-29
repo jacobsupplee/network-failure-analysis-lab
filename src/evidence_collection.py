@@ -390,3 +390,71 @@ def collect_firewall_profiles() -> dict:
         "profiles": normalized_profiles,
         "raw_output": result.stdout.strip(),
     }
+
+
+def collect_firewall_rules(host: str, port: int) -> dict:
+    """Collect enabled outbound Windows Firewall rules without changing policy."""
+    if not isinstance(host, str) or not host.strip():
+        raise ValueError("A non-empty target hostname or IP address is required.")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError("Target port must be an integer between 1 and 65535.")
+
+    target_host = host.strip()
+    try:
+        target_ip = socket.gethostbyname(target_host)
+    except OSError:
+        target_ip = target_host
+
+    command = (
+        "$rules = Get-NetFirewallRule -PolicyStore ActiveStore -Enabled True -Direction Outbound -ErrorAction Stop; "
+        "$results = foreach ($rule in $rules) { "
+        "$p = $rule | Get-NetFirewallPortFilter; $a = $rule | Get-NetFirewallAddressFilter; "
+        "$app = $rule | Get-NetFirewallApplicationFilter; $svc = $rule | Get-NetFirewallServiceFilter; "
+        "[PSCustomObject]@{ DisplayName=$rule.DisplayName; Action=[string]$rule.Action; Profile=[string]$rule.Profile; "
+        "Protocol=[string]$p.Protocol; LocalPort=(@($p.LocalPort) -join ','); RemotePort=(@($p.RemotePort) -join ','); "
+        "LocalAddress=(@($a.LocalAddress) -join ','); RemoteAddress=(@($a.RemoteAddress) -join ','); "
+        "Program=[string]$app.Program; Service=[string]$svc.Service } }; $results | ConvertTo-Json -Compress -Depth 4"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15, check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("Outbound firewall rule inspection timed out.") from error
+    except OSError as error:
+        raise RuntimeError(f"Could not run PowerShell to inspect outbound firewall rules: {error}") from error
+
+    if result.returncode != 0:
+        message = result.stderr.strip() or f"exit code {result.returncode}"
+        raise RuntimeError(f"Outbound firewall rule inspection failed: {message}")
+
+    raw_output = result.stdout.strip()
+    try:
+        rules = json.loads(raw_output) if raw_output else []
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Windows Firewall returned invalid rule JSON.") from error
+    if isinstance(rules, dict):
+        rules = [rules]
+    if not isinstance(rules, list):
+        raise RuntimeError("Windows Firewall returned an invalid rule collection.")
+
+    normalized = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        normalized.append({
+            "display_name": str(rule.get("DisplayName") or ""),
+            "action": str(rule.get("Action") or "").lower(),
+            "profile": str(rule.get("Profile") or "Any"),
+            "protocol": str(rule.get("Protocol") or "Any"),
+            "local_port": str(rule.get("LocalPort") or "Any"),
+            "remote_port": str(rule.get("RemotePort") or "Any"),
+            "local_address": str(rule.get("LocalAddress") or "Any"),
+            "remote_address": str(rule.get("RemoteAddress") or "Any"),
+            "program": str(rule.get("Program") or "Any"),
+            "service": str(rule.get("Service") or "Any"),
+        })
+
+    return {"source": "Windows Get-NetFirewallRule ActiveStore outbound rules", "target_host": target_host,
+            "target_ip": target_ip, "target_port": port, "candidate_rules": normalized, "raw_output": raw_output}

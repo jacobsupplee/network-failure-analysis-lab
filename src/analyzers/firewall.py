@@ -90,3 +90,88 @@ def analyze_firewall(data: dict) -> dict:
         [{"test": "Review connection-specific firewall rules if needed", "purpose": "Profile status alone does not show whether a specific connection is allowed or blocked."}],
         ["Confirm all three profile states and retest the affected connection."],
     )
+
+
+def _filter_values(value):
+    return {part.strip().lower() for part in str(value or "Any").split(",") if part.strip()} or {"any"}
+
+
+def _port_filter_matches(value, port):
+    values = _filter_values(value)
+    if values & {"any", "*"}:
+        return True
+    for item in values:
+        if item.isdigit() and int(item) == port:
+            return True
+        if "-" in item:
+            try:
+                low, high = (int(part.strip()) for part in item.split("-", 1))
+                if low <= port <= high:
+                    return True
+            except ValueError:
+                continue
+    return False
+
+
+def _address_filter_matches(value, target_ip):
+    values = _filter_values(value)
+    if values & {"any", "*"}:
+        return True
+    import ipaddress
+    try:
+        target = ipaddress.ip_address(str(target_ip))
+    except ValueError:
+        return False
+    for item in values:
+        try:
+            if target in ipaddress.ip_network(item, strict=False):
+                return True
+        except ValueError:
+            try:
+                low, high = (ipaddress.ip_address(part.strip()) for part in item.split("-", 1))
+                if low <= target <= high:
+                    return True
+            except ValueError:
+                continue
+    return False
+
+
+def analyze_firewall_rules(data: dict) -> dict:
+    """Find outbound block rules whose collected target filters may overlap."""
+    rules = data.get("candidate_rules")
+    port = data.get("target_port")
+    target_ip = data.get("target_ip") or data.get("target_host")
+    if not isinstance(rules, list) or isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        return build_report("inconclusive", "Outbound firewall rule data is unavailable or invalid.",
+            "Repeat the scan and verify PowerShell access to active outbound firewall rules.", [], [], [], [])
+
+    matches = []
+    for rule in rules:
+        if not isinstance(rule, dict) or str(rule.get("action", "")).lower() != "block":
+            continue
+        protocols = _filter_values(rule.get("protocol", "Any"))
+        if not (protocols & {"any", "*", "6", "tcp"}):
+            continue
+        if not _port_filter_matches(rule.get("remote_port", "Any"), port):
+            continue
+        if not _address_filter_matches(rule.get("remote_address", "Any"), target_ip):
+            continue
+        matches.append({"rule": rule.get("display_name") or "Unnamed outbound block rule",
+            "action": "block", "profile": rule.get("profile", "Any"), "protocol": rule.get("protocol", "Any"),
+            "remote_port": rule.get("remote_port", "Any"), "remote_address": rule.get("remote_address", "Any"),
+            "program": rule.get("program", "Any"), "service": rule.get("service", "Any")})
+
+    if matches:
+        return build_report("investigate", f"{len(matches)} enabled outbound block rule(s) may match {target_ip}:{port}.",
+            "Review each rule’s profile, application/service filters, policy source, and precedence before changing policy.",
+            matches, [{"cause": "An outbound Windows Firewall block rule may apply to the target connection",
+            "reason": "Address, protocol, and port filters overlap the target. This is a candidate match, not proof that the rule blocked the connection; profile, program/service, and precedence are not fully simulated.",
+            "confidence": "Moderate for filter overlap; unconfirmed as the cause of the connection result"}],
+            [{"test": "Inspect the candidate outbound block rule", "purpose": "Compare profile, program/service restrictions, and policy precedence with the affected connection."}],
+            ["Verify rule scope and active profile, then retest the target connection."])
+
+    return build_report("healthy", f"No matching outbound block rule was found in collected filters for {target_ip}:{port}.",
+        "If the connection still fails, inspect application-specific restrictions, endpoint security, and upstream network controls.",
+        [{"target": f"{target_ip}:{port}", "candidate_rules_checked": len(rules), "matching_block_rules": 0}], [],
+        [{"test": "Check other policy layers if connectivity still fails", "purpose": "This review does not fully simulate Windows Firewall policy precedence or every application/service constraint."}],
+        ["Retest the TCP connection and correlate it with the firewall rule evidence."])
