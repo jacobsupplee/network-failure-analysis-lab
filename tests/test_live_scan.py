@@ -56,19 +56,20 @@ def test_live_scan_continues_when_dns_collection_fails(monkeypatch):
     )
 
     monkeypatch.setattr(application, "collect_firewall_profiles", lambda: {"profiles": [{"name": "Domain", "enabled": True}, {"name": "Private", "enabled": True}, {"name": "Public", "enabled": True}], "raw_output": "Mock firewall profiles"})
+    monkeypatch.setattr(application, "collect_firewall_rules", lambda host, port: {"target_host": host, "target_port": port, "candidate_rules": [], "raw_output": "Mock firewall rules"})
 
     scan = application.run_live_scan()
     results = scan["results"]
     correlation = scan["correlation"]
 
-    assert len(results) == 6
+    assert len(results) == 7
     assert results[0]["scenario_id"] == "LIVE-DHCP"
     assert results[1]["analysis"]["status"] == "inconclusive"
     assert results[2]["analysis"]["status"] == "connected"
     assert results[3]["diagnostic_type"] == "routing"
     assert results[4]["diagnostic_type"] == "ports"
     assert results[5]["diagnostic_type"] == "firewall"
-    assert results[5]["diagnostic_type"] == "firewall"
+    assert results[6]["diagnostic_type"] == "firewall_rules"
     assert correlation["status"] == "inconclusive"
 
 def test_live_scan_continues_when_configuration_collection_fails(monkeypatch):

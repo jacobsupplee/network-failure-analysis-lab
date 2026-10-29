@@ -135,3 +135,37 @@ def test_collect_firewall_profiles_handles_timeout(monkeypatch):
 
     with pytest.raises(RuntimeError, match="timed out"):
         collect_firewall_profiles()
+
+
+
+def test_firewall_rule_analyzer_flags_potential_block_without_claiming_causation():
+    from src.analyzers.firewall import analyze_firewall_rules
+    result = analyze_firewall_rules({
+        "target_host": "example.com", "target_port": 443,
+        "candidate_rules": [{
+            "display_name": "Block HTTPS", "action": "Block", "profile": "Public",
+            "remote_port": "443", "remote_address": "Any", "program": "Any", "service": "Any",
+        }],
+    })
+    assert result["status"] == "investigate"
+    assert "Block HTTPS" in result["finding"]
+    assert "does not prove the rule blocked" in result["hypotheses"][0]["reason"]
+
+
+def test_firewall_rule_analyzer_reports_no_matching_block_rule():
+    from src.analyzers.firewall import analyze_firewall_rules
+    result = analyze_firewall_rules({
+        "target_host": "example.com", "target_port": 443,
+        "candidate_rules": [{
+            "display_name": "Allow HTTPS", "action": "Allow", "profile": "Any",
+            "remote_port": "443", "remote_address": "Any",
+        }],
+    })
+    assert result["status"] == "healthy"
+    assert "No enabled outbound block rule matched" in result["finding"]
+
+
+def test_firewall_rule_analyzer_returns_inconclusive_without_rule_data():
+    from src.analyzers.firewall import analyze_firewall_rules
+    result = analyze_firewall_rules({"target_host": "example.com", "target_port": 443})
+    assert result["status"] == "inconclusive"
