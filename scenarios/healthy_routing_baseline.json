@@ -1,0 +1,23 @@
+{
+  "scenario_id": "ROUTE-003",
+  "diagnostic_type": "routing",
+  "title": "Healthy IPv4 default route",
+  "description": "The routing table includes a valid IPv4 default route whose gateway matches the reported adapter gateway.",
+  "symptoms": [
+    "No routing failure is indicated by the supplied route evidence."
+  ],
+  "evidence": {
+    "destination": "1.1.1.1",
+    "default_gateway": "192.168.1.1",
+    "routes": [
+      {
+        "destination": "0.0.0.0",
+        "netmask": "0.0.0.0",
+        "gateway": "192.168.1.1",
+        "interface": "192.168.1.25",
+        "metric": 25
+      }
+    ]
+  },
+  "expected_status": "route_present"
+}

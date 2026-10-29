@@ -27,6 +27,7 @@ SCENARIOS = {
     "TCP port refused": Path("scenarios/tcp_refused.json"),
     "Missing default route": Path("scenarios/missing_default_route.json"),
     "Default gateway mismatch": Path("scenarios/default_gateway_mismatch.json"),
+    "Healthy routing baseline": Path("scenarios/healthy_routing_baseline.json"),
 }
 
 STATUS_LABELS = {
@@ -410,6 +411,7 @@ mode = st.selectbox(
         "TCP port refused",
         "Missing default route",
         "Default gateway mismatch",
+        "Healthy routing baseline",
         "Combined scan",
         "Live Network Scan",
     ],
