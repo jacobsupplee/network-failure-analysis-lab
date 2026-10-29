@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from src.analysis_runner import run_analysis
 
 
@@ -185,3 +187,15 @@ def test_run_analysis_on_valid_default_route(tmp_path):
     assert result["analysis"]["status"] == "route_present"
     assert result["analysis"]["hypotheses"] == []
     assert result["matches_expected"] is True
+
+
+def test_run_analysis_rejects_incomplete_scenario(tmp_path):
+    scenario = {
+        "scenario_id": "INVALID-001",
+        "diagnostic_type": "dns",
+    }
+    scenario_path = tmp_path / "incomplete_scenario.json"
+    scenario_path.write_text(json.dumps(scenario), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Scenario is missing required fields"):
+        run_analysis(scenario_path)
