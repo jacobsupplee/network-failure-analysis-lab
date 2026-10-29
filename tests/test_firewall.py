@@ -70,6 +70,28 @@ def test_collect_firewall_profiles_parses_multiple_profiles(monkeypatch):
     ]
 
 
+
+def test_collect_firewall_profiles_parses_numeric_enabled_states(monkeypatch):
+    output = json.dumps([
+        {"Name": "Domain", "Enabled": 1},
+        {"Name": "Private", "Enabled": 0},
+        {"Name": "Public", "Enabled": 1},
+    ])
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=output, stderr=""),
+    )
+
+    result = collect_firewall_profiles()
+
+    assert result["profiles"] == [
+        {"name": "Domain", "enabled": True},
+        {"name": "Private", "enabled": False},
+        {"name": "Public", "enabled": True},
+    ]
+
+
 def test_collect_firewall_profiles_accepts_single_profile_json(monkeypatch):
     output = '{"Name":"Public","Enabled":true}'
     monkeypatch.setattr(

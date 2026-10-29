@@ -370,9 +370,14 @@ def collect_firewall_profiles() -> dict:
             raise RuntimeError("Windows Firewall returned an invalid profile record.")
 
         enabled = profile.get("Enabled")
-        if isinstance(enabled, str):
-            enabled = enabled.strip().lower() == "true" if enabled.strip().lower() in {"true", "false"} else None
-        elif not isinstance(enabled, bool):
+        if isinstance(enabled, bool):
+            pass
+        elif isinstance(enabled, int) and enabled in (0, 1):
+            enabled = bool(enabled)
+        elif isinstance(enabled, str):
+            value = enabled.strip().lower()
+            enabled = value == "true" if value in {"true", "false"} else None
+        else:
             enabled = None
 
         normalized_profiles.append({
