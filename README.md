@@ -30,6 +30,7 @@ The test suite also covers routing, TCP outcomes, firewall rule matching, eviden
 | --- | --- | --- |
 | `DHCP-001` — Workstation receives an APIPA address | IPv4 address `169.254.12.34`, with no default gateway or DHCP server reported | `investigate` |
 | `DNS-001` — DNS query times out | Hostname lookup times out against the recorded DNS server | `investigate` |
+| `TCP-001` — Target service refuses TCP connections | Connection to `192.0.2.10:443` is refused | `investigate` |
 
 Run either scenario from the app's diagnostic-mode selector. The scenario runner compares the analyzer's actual status with `expected_status`; a mismatch is reported rather than treated as a passing scenario. These are synthetic examples, so they are repeatable without deliberately breaking the machine's network connection.
 

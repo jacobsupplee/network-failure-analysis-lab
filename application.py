@@ -24,6 +24,7 @@ from src.evidence_collection import (
 SCENARIOS = {
     "DHCP diagnostic": Path("scenarios/apipa_dhcp.json"),
     "DNS diagnostic": Path("scenarios/dns_failure.json"),
+    "TCP port refused": Path("scenarios/tcp_refused.json"),
 }
 
 STATUS_LABELS = {
@@ -404,6 +405,7 @@ mode = st.selectbox(
     [
         "DHCP diagnostic",
         "DNS diagnostic",
+        "TCP port refused",
         "Combined scan",
         "Live Network Scan",
     ],

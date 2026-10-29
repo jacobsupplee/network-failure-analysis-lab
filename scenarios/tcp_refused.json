@@ -1,0 +1,16 @@
+{
+  "scenario_id": "TCP-001",
+  "diagnostic_type": "ports",
+  "title": "Target service refuses TCP connections",
+  "description": "The target host returns a connection-refused result when the workstation attempts to connect to TCP port 443.",
+  "symptoms": [
+    "The application cannot establish a TCP connection to the target service."
+  ],
+  "evidence": {
+    "host": "192.0.2.10",
+    "port": 443,
+    "result": "refused",
+    "error": "Connection refused"
+  },
+  "expected_status": "investigate"
+}
