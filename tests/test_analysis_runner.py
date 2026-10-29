@@ -199,3 +199,20 @@ def test_run_analysis_rejects_incomplete_scenario(tmp_path):
 
     with pytest.raises(ValueError, match="Scenario is missing required fields"):
         run_analysis(scenario_path)
+
+
+
+def test_run_analysis_rejects_malformed_json(tmp_path):
+    scenario_path = tmp_path / "malformed_scenario.json"
+    scenario_path.write_text('{"scenario_id": "INVALID-002",', encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        run_analysis(scenario_path)
+
+
+def test_run_analysis_rejects_non_object_json(tmp_path):
+    scenario_path = tmp_path / "scenario_array.json"
+    scenario_path.write_text('[{"scenario_id": "INVALID-003"}]', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Scenario must be a JSON object"):
+        run_analysis(scenario_path)

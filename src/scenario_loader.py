@@ -10,6 +10,9 @@ def load_scenario(path: str | Path) -> dict:
     with scenario_path.open("r", encoding="utf-8") as file:
         scenario = json.load(file)
 
+    if not isinstance(scenario, dict):
+        raise ValueError("Scenario must be a JSON object.")
+
     required_fields = {
         "scenario_id",
         "diagnostic_type",
