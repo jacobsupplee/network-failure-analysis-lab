@@ -1,38 +1,81 @@
 # Network Failure Analysis Lab
 
-This is a small Python project I built to practice troubleshooting common network problems.
+An evidence-driven network troubleshooting application built with Python and Streamlit. It collects network observations, runs focused diagnostic analyzers, and correlates their findings to help prioritize the next troubleshooting step.
 
-It checks IP configuration, DNS, connectivity, routing, TCP ports, and Windows Firewall profile settings. It can also look at the results together to help narrow down what might be wrong and what to check next.
+[![Tests](https://github.com/jacobsupplee/network-failure-analysis-lab/actions/workflows/tests.yml/badge.svg)](https://github.com/jacobsupplee/network-failure-analysis-lab/actions/workflows/tests.yml)
 
-## What you can try
+## What it checks
 
-- Run example DHCP and DNS problems.
-- Run a combined scan of the example scenarios.
-- Check your own computer's network, inspect Windows Firewall profile status, and test a hostname and TCP port.
-- Review the findings and suggested next steps.
+The **Live Network Scan** runs seven diagnostic checks:
 
-## Run it locally
+1. **DHCP and IP configuration** — inspects the primary adapter's IP address, default gateway, and DHCP information; identifies signs such as an APIPA address.
+2. **DNS resolution** — checks whether a hostname resolves.
+3. **Network connectivity** — checks reachability of the default gateway and an external target.
+4. **IPv4 routing** — examines the routing table and default-route evidence.
+5. **TCP connectivity** — attempts a connection to a configurable hostname/IP and TCP port.
+6. **Windows Firewall profiles** — reports whether the Domain, Private, and Public profiles are enabled.
+7. **Outbound firewall rule filters** — identifies enabled outbound block rules whose collected protocol, remote-address, and remote-port filters may match the chosen TCP target.
 
-You'll need Python installed.
+Each diagnostic reports its observations, finding, possible causes where supported, recommended tests, and verification steps. The correlation layer combines results, ranks troubleshooting priorities, and surfaces conflicting observations rather than silently treating them as consistent.
 
-Install the project dependencies:
+## Try the example scenarios
+
+The project includes example scenarios for DHCP/APIPA and DNS failures. These let you exercise the analysis flow without relying on a real network outage.
+
+The test suite also covers routing, TCP outcomes, firewall rule matching, evidence collection parsing, scenario validation, and root-cause correlation.
+
+## Requirements
+
+- Python 3.10 or newer
+- Windows for the full live scan, including the PowerShell-based Windows Firewall and network configuration collectors
+- Internet or network access for live connectivity tests
+
+Some analyzers and scenario tests can run on other platforms, but the full live collection path is designed for Windows.
+
+## Run locally
+
+Open PowerShell in the project directory and activate your virtual environment if you use one.
+
+Install dependencies:
 
 ```powershell
-pip install -r dependencies.txt
+python -m pip install -r dependencies.txt
 ```
 
-Start the app:
+Start the Streamlit app:
 
 ```powershell
 python -m streamlit run application.py
 ```
 
-The app will open in your browser. Choose a diagnostic from the menu to get started.
+Choose a diagnostic mode in the browser. For **Live Network Scan**, enter the hostname or IP address and TCP port you want to test, then run the scan.
 
-## Run the tests
+## Run tests
 
 ```powershell
 python -m pytest
 ```
 
-The live scan checks the network of the computer running the app, so results can vary depending on your connection and the host or port you test. Windows Firewall inspection uses read-only PowerShell commands and reports profile enabled states; it does not change firewall settings or prove that a specific rule blocked traffic.
+GitHub Actions runs the test suite when changes are pushed to the repository.
+
+## Architecture
+
+- `application.py` — Streamlit interface and live-scan orchestration
+- `src/evidence_collection.py` — read-only collection of network and firewall evidence
+- `src/analyzers/` — focused analyzers for DHCP, DNS, connectivity, routing, TCP ports, and firewall data
+- `src/correlation.py` and supporting correlation modules — evidence correlation, conflict handling, confidence labels, and troubleshooting-priority scoring
+- `src/scenario_loader.py` and `src/analysis_runner.py` — scenario validation and execution
+- `scenarios/` — bundled JSON example scenarios
+- `tests/` — automated unit and integration-style tests
+
+## Important limitations
+
+- A diagnostic result is an observation, not automatic proof of root cause. Correlation ranks what to investigate; its priority score is **not a probability**.
+- Outbound firewall analysis is a filter-overlap check, not a complete Windows Firewall policy simulator. It does not fully evaluate profile applicability, application/service constraints, policy precedence, or every Windows filtering behavior.
+- Firewall inspection uses read-only commands and does not change firewall settings.
+- Live results depend on the current machine, network, DNS, permissions, and target host/port. A timeout or failed connection can have causes outside the local computer.
+- The bundled scenarios are controlled examples, not a substitute for validating behavior against a real network environment.
+
+## Project goal
+
+This project is a practical exercise in Python, network troubleshooting, evidence collection, automated testing, and explaining diagnostic uncertainty clearly.
