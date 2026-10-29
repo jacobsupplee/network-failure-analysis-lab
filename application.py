@@ -4,7 +4,7 @@ import streamlit as st
 
 from src.analyzers.connectivity import analyze_connectivity
 from src.analyzers.dhcp import analyze_dhcp
-from src.analyzers.firewall import analyze_firewall, analyze_firewall_rules
+from src.analyzers.firewall import analyze_firewall
 from src.analyzers.dns import analyze_dns
 from src.analyzers.ports import analyze_port
 from src.analyzers.routing import analyze_routing
@@ -15,7 +15,6 @@ from src.evidence_collection import (
     collect_connectivity,
     collect_dns_resolution,
     collect_firewall_profiles,
-    collect_firewall_rules,
     collect_network_configuration,
     collect_routing_table,
     collect_tcp_connection,
@@ -303,27 +302,6 @@ def run_live_scan(
             "firewall",
             firewall_analysis,
             firewall_details,
-        )
-    )
-
-    try:
-        rule_data = collect_firewall_rules(tcp_host, int(tcp_port))
-        rule_analysis = analyze_firewall_rules(rule_data)
-        rule_details = rule_data.get("raw_output")
-    except (OSError, RuntimeError, ValueError, KeyError) as error:
-        rule_analysis = make_inconclusive_report(
-            f"Connection-specific firewall rule collection failed: {error}",
-            "Run the scan on Windows and verify PowerShell access to the active firewall policy.",
-        )
-        rule_details = str(error)
-
-    results.append(
-        make_live_result(
-            "LIVE-FIREWALL-RULES",
-            f"Outbound Firewall Rules: {tcp_host}:{tcp_port}",
-            "firewall_rules",
-            rule_analysis,
-            rule_details,
         )
     )
 
