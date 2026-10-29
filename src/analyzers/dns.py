@@ -53,7 +53,7 @@ def analyze_dns(data: dict) -> dict:
             ],
         )
 
-    if normalized_result in {"failed", "timeout", "nxdomain"}:
+    if normalized_result in {"failure", "failed", "timeout", "nxdomain"}:
         return build_report(
             "investigate",
             f"DNS resolution for {hostname} did not succeed (result: {normalized_result}).",
@@ -109,7 +109,7 @@ def analyze_dns(data: dict) -> dict:
     return build_report(
         "inconclusive",
         f"Unrecognized DNS test result: {resolution_result}.",
-        "Use a supported result: success, failed, timeout, nxdomain, or unavailable.",
+        "Use a supported result: success, failure, failed, timeout, nxdomain, or unavailable.",
         evidence,
         [],
         [
