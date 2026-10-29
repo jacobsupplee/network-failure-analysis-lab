@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def load_scenario(path: str | Path) -> dict:
-    """Load a network failure scenario from a JSON file."""
+    """Load and validate a network failure scenario from a JSON file."""
 
     scenario_path = Path(path)
 
@@ -22,13 +22,14 @@ def load_scenario(path: str | Path) -> dict:
     }
 
     missing_fields = required_fields - scenario.keys()
-
     if missing_fields:
         missing = ", ".join(sorted(missing_fields))
         raise ValueError(f"Scenario is missing required fields: {missing}")
 
-    if not isinstance(scenario["diagnostic_type"], str) or not scenario["diagnostic_type"].strip():
-        raise ValueError("Scenario diagnostic_type must be a non-empty string.")
+    for field in ("scenario_id", "diagnostic_type", "title", "expected_status"):
+        value = scenario[field]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Scenario {field} must be a non-empty string.")
 
     if not isinstance(scenario["evidence"], dict):
         raise ValueError("Scenario evidence must be a JSON object.")
