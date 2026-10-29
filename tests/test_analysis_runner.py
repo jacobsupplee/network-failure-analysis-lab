@@ -216,3 +216,40 @@ def test_run_analysis_rejects_non_object_json(tmp_path):
 
     with pytest.raises(ValueError, match="Scenario must be a JSON object"):
         run_analysis(scenario_path)
+
+
+def test_run_analysis_reports_expected_status_mismatch(tmp_path):
+    scenario = {
+        "scenario_id": "DNS-003",
+        "diagnostic_type": "dns",
+        "title": "DNS failure expectation mismatch",
+        "evidence": {
+            "hostname": "example.com",
+            "dns_server": "192.0.2.53",
+            "resolution_result": "failure",
+        },
+        "expected_status": "healthy",
+    }
+    scenario_path = tmp_path / "dns_expectation_mismatch.json"
+    scenario_path.write_text(json.dumps(scenario), encoding="utf-8")
+
+    result = run_analysis(scenario_path)
+
+    assert result["analysis"]["status"] == "investigate"
+    assert result["expected_status"] == "healthy"
+    assert result["matches_expected"] is False
+
+
+def test_run_analysis_rejects_unsupported_diagnostic_type(tmp_path):
+    scenario = {
+        "scenario_id": "INVALID-004",
+        "diagnostic_type": "unsupported",
+        "title": "Unsupported diagnostic",
+        "evidence": {},
+        "expected_status": "healthy",
+    }
+    scenario_path = tmp_path / "unsupported_diagnostic.json"
+    scenario_path.write_text(json.dumps(scenario), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unsupported diagnostic type: unsupported"):
+        run_analysis(scenario_path)
