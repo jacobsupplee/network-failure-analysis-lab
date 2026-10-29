@@ -84,3 +84,37 @@ def test_run_analysis_on_unavailable_dns_lookup(tmp_path):
     assert result["analysis"]["hypotheses"] == []
     assert result["matches_expected"] is True
 
+def test_run_analysis_on_missing_default_route(tmp_path):
+    scenario = {
+        "scenario_id": "ROUTE-001",
+        "diagnostic_type": "routing",
+        "title": "Default route is missing",
+        "description": "The routing table contains a local network route but no default route.",
+        "evidence": {
+            "destination": "1.1.1.1",
+            "default_gateway": "192.168.1.1",
+            "routes": [
+                {
+                    "destination": "192.168.1.0",
+                    "netmask": "255.255.255.0",
+                    "gateway": "0.0.0.0",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                }
+            ],
+        },
+        "expected_status": "investigate",
+    }
+    scenario_path = tmp_path / "missing_default_route.json"
+    scenario_path.write_text(json.dumps(scenario), encoding="utf-8")
+
+    result = run_analysis(scenario_path)
+
+    assert result["scenario_id"] == "ROUTE-001"
+    assert result["diagnostic_type"] == "routing"
+    assert result["analysis"]["status"] == "investigate"
+    assert result["analysis"]["hypotheses"][0]["cause"] == (
+        "Missing IPv4 default route"
+    )
+    assert result["matches_expected"] is True
+
