@@ -118,3 +118,37 @@ def test_run_analysis_on_missing_default_route(tmp_path):
     )
     assert result["matches_expected"] is True
 
+def test_run_analysis_on_default_gateway_mismatch(tmp_path):
+    scenario = {
+        "scenario_id": "ROUTE-002",
+        "diagnostic_type": "routing",
+        "title": "Reported gateway does not match default route",
+        "description": "The configured gateway differs from the gateway recorded in the default route.",
+        "evidence": {
+            "destination": "1.1.1.1",
+            "default_gateway": "192.168.1.254",
+            "routes": [
+                {
+                    "destination": "0.0.0.0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "192.168.1.1",
+                    "interface": "192.168.1.25",
+                    "metric": 25,
+                }
+            ],
+        },
+        "expected_status": "investigate",
+    }
+    scenario_path = tmp_path / "default_gateway_mismatch.json"
+    scenario_path.write_text(json.dumps(scenario), encoding="utf-8")
+
+    result = run_analysis(scenario_path)
+
+    assert result["scenario_id"] == "ROUTE-002"
+    assert result["diagnostic_type"] == "routing"
+    assert result["analysis"]["status"] == "investigate"
+    assert result["analysis"]["hypotheses"][0]["cause"] == (
+        "Default gateway mismatch"
+    )
+    assert result["matches_expected"] is True
+
