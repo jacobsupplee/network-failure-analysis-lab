@@ -11,6 +11,7 @@ from src.analyzers.routing import analyze_routing
 from src.analysis_runner import run_analysis
 from src.correlation import correlate_findings
 from src.diagnostics import build_report
+from src.diagnostic_report import build_diagnostic_report_html, build_diagnostic_report_json
 from src.evidence_collection import (
     collect_connectivity,
     collect_dns_resolution,
@@ -518,6 +519,29 @@ def display_network_baseline() -> None:
                 st.error(f"Could not clear network baseline: {error}")
 
 
+def display_diagnostic_report_downloads(scan: dict, filename_prefix: str) -> None:
+    st.markdown("#### Export diagnostic report")
+    st.caption(
+        "The HTML report is suitable for review or printing. The JSON file preserves "
+        "the complete scan record for structured analysis. Both may contain sensitive network details."
+    )
+    report_col1, report_col2 = st.columns(2)
+    report_col1.download_button(
+        "Download HTML diagnostic report",
+        data=build_diagnostic_report_html(scan),
+        file_name=f"{filename_prefix}.html",
+        mime="text/html",
+        key=f"{filename_prefix}_html_report",
+    )
+    report_col2.download_button(
+        "Download JSON evidence",
+        data=build_diagnostic_report_json(scan),
+        file_name=f"{filename_prefix}.json",
+        mime="application/json",
+        key=f"{filename_prefix}_json_report",
+    )
+
+
 def display_scan_history() -> None:
     st.subheader("Saved live scans")
     st.caption("Scan records are stored locally in data/scan_history.json. They may contain private network and firewall information.")
@@ -551,6 +575,11 @@ def display_scan_history() -> None:
             selected_scan.get("overall_finding", "No overall finding was saved."),
         )
         display_correlation(selected_scan.get("correlation", {}))
+
+        display_diagnostic_report_downloads(
+            selected_scan,
+            "diagnostic-" + selected_scan.get("scan_id", "report")[:8],
+        )
 
         st.markdown("#### Individual diagnostic results")
         for result in selected_scan.get("results", []):
@@ -953,6 +982,11 @@ if mode == "Live Network Scan":
                     scan = run_live_scan(tcp_host.strip(), int(tcp_port))
                 save_scan(scan)
                 st.success("Live scan completed and saved to Scan History.")
+                saved_scan = load_scan_history()[-1]
+                display_diagnostic_report_downloads(
+                    saved_scan,
+                    "diagnostic-" + saved_scan.get("scan_id", "report")[:8],
+                )
 
                 results = scan["results"]
                 correlation = scan["correlation"]

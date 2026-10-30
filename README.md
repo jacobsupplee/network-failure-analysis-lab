@@ -104,6 +104,15 @@ The **Incident Management** view provides a lightweight incident workflow. Creat
 
 An HTML incident report can be exported with the incident details, associated scan summaries, resolution, and investigation timeline. Incident records are stored locally in `data/incidents.json` and excluded from Git because they may contain internal network details and operational notes.
 
+## Diagnostic report exports
+
+The **Live Network Scan** and **Scan History** views provide two exports for each saved scan:
+
+- **HTML diagnostic report** — a self-contained report with an executive summary, overall assessment, individual check results, likely failure areas, confidence and troubleshooting-priority context, supporting findings, conflicts, configuration snapshot, collected evidence, recommended tests, and verification steps. It can be opened in a browser or printed to PDF.
+- **JSON evidence** — the complete saved scan record, preserving the underlying diagnostic and correlation data for further analysis.
+
+Reports are generated from the saved scan record so exported evidence matches the scan in history. The HTML output escapes collected and user-controlled text. Both formats may contain private IP addresses, DNS settings, firewall details, and raw command output; review them before sharing.
+
 ## Troubleshooting playbooks
 
 The **Troubleshooting Playbooks** view provides guided, read-only procedures for three common failure areas:
