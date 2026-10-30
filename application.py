@@ -928,38 +928,101 @@ def display_correlation(correlation: dict) -> None:
             st.json(conflicts)
 
 
+def display_home() -> None:
+    st.subheader("Network diagnostics workspace")
+    st.caption("A practical workspace for network diagnostics, evidence collection, and troubleshooting.")
+    st.write(
+        "Investigate network configuration and connectivity issues, review diagnostic evidence, "
+        "and document incidents from one place."
+    )
+
+    st.markdown("### Get started")
+    live_col, scenario_col = st.columns(2)
+
+    with live_col:
+        with st.container(border=True):
+            st.markdown("#### Live Network Scan")
+            st.write("Run read-only checks against this computer's network configuration and connectivity.")
+            st.button(
+                "Open Live Network Scan",
+                type="primary",
+                use_container_width=True,
+                on_click=navigate_to,
+                args=("Live Network Scan",),
+            )
+
+    with scenario_col:
+        with st.container(border=True):
+            st.markdown("#### Example Scenarios")
+            st.write("Explore simulated network failures and see how the analysis identifies possible causes.")
+            st.button(
+                "Explore Example Scenarios",
+                use_container_width=True,
+                on_click=navigate_to,
+                args=("Example Scenarios",),
+            )
+
+    st.markdown("### Other tools")
+    history_col, baseline_col, incident_col, playbook_col = st.columns(4)
+
+    with history_col:
+        st.markdown("**Scan History**")
+        st.caption("Review and compare previous scans.")
+        st.button("Open history", use_container_width=True, on_click=navigate_to, args=("Scan History",))
+
+    with baseline_col:
+        st.markdown("**Network Baseline**")
+        st.caption("Identify changes from a known-good configuration.")
+        st.button("Open baseline", use_container_width=True, on_click=navigate_to, args=("Network Baseline",))
+
+    with incident_col:
+        st.markdown("**Incident Management**")
+        st.caption("Track investigations and attach diagnostic evidence.")
+        st.button("Open incidents", use_container_width=True, on_click=navigate_to, args=("Incident Management",))
+
+    with playbook_col:
+        st.markdown("**Troubleshooting Playbooks**")
+        st.caption("Follow structured procedures for common failures.")
+        st.button("Open playbooks", use_container_width=True, on_click=navigate_to, args=("Troubleshooting Playbooks",))
+
+    st.divider()
+    st.caption("Ready. No diagnostic checks have been executed.")
+
+
+def navigate_to(page: str) -> None:
+    st.session_state["mode"] = page
+
+
 st.set_page_config(
     page_title="Network Failure Analysis Lab",
     page_icon=":material/network_check:",
     layout="wide",
 )
 
+if "mode" not in st.session_state:
+    st.session_state["mode"] = "Home"
+
 st.title("Network Failure Analysis Lab")
 st.caption("Developed by Jacob Supplee")
-st.write(
-    "An evidence-driven tool for investigating network configuration, "
-    "DNS resolution, connectivity, routing, and TCP port problems."
-)
 
-mode = st.selectbox(
-    "Select diagnostic mode",
+mode = st.sidebar.radio(
+    "Navigation",
     [
-        "DHCP diagnostic",
-        "DNS diagnostic",
-        "TCP port refused",
-        "Missing default route",
-        "Default gateway mismatch",
-        "Healthy routing baseline",
-        "Combined scan",
+        "Home",
         "Live Network Scan",
+        "Example Scenarios",
         "Scan History",
         "Network Baseline",
         "Incident Management",
         "Troubleshooting Playbooks",
     ],
+    key="mode",
 )
 
-if mode == "Live Network Scan":
+if mode == "Home":
+    display_home()
+
+elif mode == "Live Network Scan":
     st.subheader("Live network checks")
     st.caption("Runs local configuration, DNS, connectivity, routing, and TCP checks on this computer.")
 
@@ -983,10 +1046,6 @@ if mode == "Live Network Scan":
                 save_scan(scan)
                 st.success("Live scan completed and saved to Scan History.")
                 saved_scan = load_scan_history()[-1]
-                display_diagnostic_report_downloads(
-                    saved_scan,
-                    "diagnostic-" + saved_scan.get("scan_id", "report")[:8],
-                )
 
                 results = scan["results"]
                 correlation = scan["correlation"]
@@ -1021,8 +1080,28 @@ if mode == "Live Network Scan":
                     ):
                         display_analysis(result, live=True)
 
+                st.divider()
+                display_diagnostic_report_downloads(
+                    saved_scan,
+                    "diagnostic-" + saved_scan.get("scan_id", "report")[:8],
+                )
+
             except (OSError, RuntimeError, ValueError, KeyError) as error:
                 st.error(f"The live scan could not complete: {error}")
+
+elif mode == "Example Scenarios":
+    st.subheader("Example scenario analysis")
+    st.caption(
+        "Select a simulated network condition and run its analysis. "
+        "These scenarios use sample evidence and do not inspect your live network."
+    )
+    selected_scenario = st.selectbox("Select an example scenario", list(SCENARIOS))
+    if st.button("Run Example Scenario", type="primary"):
+        try:
+            result = run_analysis(SCENARIOS[selected_scenario])
+            display_analysis(result)
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            st.error(f"Scenario analysis could not run: {error}")
 
 elif mode == "Scan History":
     display_scan_history()
@@ -1035,22 +1114,3 @@ elif mode == "Incident Management":
 
 elif mode == "Troubleshooting Playbooks":
     display_troubleshooting_playbooks()
-
-elif mode == "Combined scan":
-    st.subheader("Scenario analysis")
-    st.caption("Run the bundled example scenarios to see how the tool handles known network problems.")
-
-    for scenario_name, scenario_path in SCENARIOS.items():
-        with st.expander(scenario_name, expanded=True):
-            try:
-                result = run_analysis(scenario_path)
-                display_analysis(result)
-            except (OSError, RuntimeError, ValueError, KeyError) as error:
-                st.error(f"Could not run {scenario_name}: {error}")
-
-elif mode in SCENARIOS:
-    try:
-        result = run_analysis(SCENARIOS[mode])
-        display_analysis(result)
-    except (OSError, RuntimeError, ValueError, KeyError) as error:
-        st.error(f"Diagnostic could not run: {error}")
