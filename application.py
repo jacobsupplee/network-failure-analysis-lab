@@ -20,6 +20,12 @@ from src.evidence_collection import (
     collect_routing_table,
     collect_tcp_connection,
 )
+from src.scan_history import (
+    clear_scan_history,
+    compare_scans,
+    load_scan_history,
+    save_scan,
+)
 
 SCENARIOS = {
     "DHCP diagnostic": Path("scenarios/apipa_dhcp.json"),
@@ -337,6 +343,110 @@ def run_live_scan(
     }
 
 
+def display_scan_history() -> None:
+    st.subheader("Saved live scans")
+    st.caption("Scan records are stored locally in data/scan_history.json. They may contain private network and firewall information.")
+
+    try:
+        history = load_scan_history()
+    except (OSError, ValueError) as error:
+        st.error(f"Could not load scan history: {error}")
+        return
+
+    if not history:
+        st.info("No saved scans yet. Run a Live Network Scan to create the first history record.")
+    else:
+        history = sorted(history, key=lambda scan: scan.get("timestamp", ""), reverse=True)
+        st.metric("Saved scans", len(history))
+
+        def scan_label(scan: dict) -> str:
+            timestamp = scan.get("timestamp", "Unknown time").replace("T", " ")
+            timestamp = timestamp.replace("+00:00", " UTC")
+            return f"{timestamp} · {status_label(scan.get('overall_status', 'inconclusive'))}"
+
+        selected_scan = st.selectbox(
+            "Inspect a previous scan",
+            history,
+            format_func=scan_label,
+        )
+
+        st.markdown("#### Overall assessment")
+        show_status_message(
+            selected_scan.get("overall_status", "inconclusive"),
+            selected_scan.get("overall_finding", "No overall finding was saved."),
+        )
+        display_correlation(selected_scan.get("correlation", {}))
+
+        st.markdown("#### Individual diagnostic results")
+        for result in selected_scan.get("results", []):
+            analysis = result.get("analysis", {})
+            result_status = analysis.get("status", "inconclusive")
+            with st.expander(
+                f"{result.get('title', 'Diagnostic')} · {status_label(result_status)}",
+                expanded=False,
+            ):
+                display_analysis(result, live=True)
+
+        if len(history) >= 2:
+            st.divider()
+            st.markdown("#### Compare two scans")
+            older_index = min(1, len(history) - 1)
+            compare_col1, compare_col2 = st.columns(2)
+            older_scan = compare_col1.selectbox(
+                "Earlier scan",
+                history,
+                index=older_index,
+                format_func=scan_label,
+                key="history_older_scan",
+            )
+            newer_scan = compare_col2.selectbox(
+                "Later scan",
+                history,
+                index=0,
+                format_func=scan_label,
+                key="history_newer_scan",
+            )
+
+            if older_scan["scan_id"] == newer_scan["scan_id"]:
+                st.warning("Select two different scans to compare.")
+            else:
+                comparison = compare_scans(older_scan, newer_scan)
+                if comparison["overall_changed"]:
+                    st.write(
+                        f"Overall status: **{status_label(comparison['previous_overall_status'])}** → "
+                        f"**{status_label(comparison['current_overall_status'])}**"
+                    )
+                else:
+                    st.write(
+                        f"Overall status unchanged: **{status_label(comparison['current_overall_status'])}**"
+                    )
+
+                if comparison["changes"]:
+                    st.dataframe(
+                        comparison["changes"],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.success("No diagnostic status changes were detected.")
+
+        st.divider()
+        st.markdown("#### Clear saved history")
+        st.caption("This permanently deletes the local scan history file.")
+        confirm_clear = st.checkbox(
+            "I understand that clearing history cannot be undone.",
+            key="confirm_clear_history",
+        )
+        if st.button("Clear Scan History", disabled=not confirm_clear):
+            try:
+                clear_scan_history()
+                st.session_state.pop("confirm_clear_history", None)
+                st.success("Scan history cleared.")
+                st.rerun()
+            except OSError as error:
+                st.error(f"Could not clear scan history: {error}")
+
+
 def display_correlation(correlation: dict) -> None:
     status = correlation.get("status", "inconclusive")
     st.subheader("Overall Root-Cause Assessment")
@@ -415,6 +525,7 @@ mode = st.selectbox(
         "Healthy routing baseline",
         "Combined scan",
         "Live Network Scan",
+        "Scan History",
     ],
 )
 
@@ -439,6 +550,9 @@ if mode == "Live Network Scan":
             try:
                 with st.spinner("Collecting network evidence and analyzing results..."):
                     scan = run_live_scan(tcp_host.strip(), int(tcp_port))
+                save_scan(scan)
+                st.success("Live scan completed and saved to Scan History.")
+
                 results = scan["results"]
                 correlation = scan["correlation"]
 
@@ -474,6 +588,9 @@ if mode == "Live Network Scan":
 
             except (OSError, RuntimeError, ValueError, KeyError) as error:
                 st.error(f"The live scan could not complete: {error}")
+
+elif mode == "Scan History":
+    display_scan_history()
 
 elif mode == "Combined scan":
     st.subheader("Scenario analysis")

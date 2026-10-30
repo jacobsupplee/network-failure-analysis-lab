@@ -86,6 +86,12 @@ python -m streamlit run application.py
 
 Choose a diagnostic mode in the browser. For **Live Network Scan**, enter the hostname or IP address and TCP port you want to test, then run the scan.
 
+## Scan history
+
+Completed live scans are saved locally to `data/scan_history.json`. Select **Scan History** in the application to inspect earlier results and compare diagnostic statuses between scans. History can be cleared from the interface.
+
+Scan history is excluded from Git because it can contain private IP addresses, DNS configuration, gateway details, and firewall evidence. Keep the file local and do not publish it.
+
 ## Run tests
 
 ```powershell

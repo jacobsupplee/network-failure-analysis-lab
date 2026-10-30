@@ -40,3 +40,5 @@ Desktop.ini
 .ipynb_checkpoints/
 
 reports/generated/
+# Local network scan evidence
+/data/scan_history.json
