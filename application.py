@@ -967,7 +967,7 @@ def display_home() -> None:
 
     with history_col:
         st.markdown("**Scan History**")
-        st.caption("Review and compare previous scans.")
+        st.caption("Review previous scans and compare diagnostic results.")
         st.button("Open history", use_container_width=True, on_click=navigate_to, args=("Scan History",))
 
     with baseline_col:
@@ -982,7 +982,7 @@ def display_home() -> None:
 
     with playbook_col:
         st.markdown("**Troubleshooting Playbooks**")
-        st.caption("Follow structured procedures for common failures.")
+        st.caption("Follow guided procedures for common network failures.")
         st.button("Open playbooks", use_container_width=True, on_click=navigate_to, args=("Troubleshooting Playbooks",))
 
     st.divider()
