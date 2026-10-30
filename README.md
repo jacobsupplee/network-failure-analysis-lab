@@ -1,11 +1,11 @@
-# Network Failure Analysis Lab
+# Network Failure Analyzer
 
 A Python and Streamlit application for investigating common network problems. It collects network evidence, runs focused diagnostic checks, correlates findings, and helps organize the next steps in an investigation.
 
 **Author:** Jacob Supplee  
 **Technologies:** Python, Streamlit, PowerShell, pytest
 
-[![Tests](https://github.com/jacobsupplee/network-failure-analysis-lab/actions/workflows/tests.yml/badge.svg)](https://github.com/jacobsupplee/network-failure-analysis-lab/actions/workflows/tests.yml)
+[![Tests](https://github.com/jacobsupplee/network-failure-analyzer/actions/workflows/tests.yml/badge.svg)](https://github.com/jacobsupplee/network-failure-analyzer/actions/workflows/tests.yml)
 
 ## Overview
 
@@ -62,8 +62,8 @@ The example scenarios and much of the analysis functionality can run on other op
 Clone the repository and open the project directory:
 
 ```powershell
-git clone https://github.com/jacobsupplee/network-failure-analysis-lab.git
-cd network-failure-analysis-lab
+git clone https://github.com/jacobsupplee/network-failure-analyzer.git
+cd network-failure-analyzer
 ```
 
 Create and activate a virtual environment:
@@ -100,7 +100,7 @@ GitHub Actions also runs the test suite on Linux and Windows. The Linux job addi
 ## Project structure
 
 ```text
-network-failure-analysis-lab/
+network-failure-analyzer/
 ├── application.py
 ├── dependencies.txt
 ├── requirements.txt
