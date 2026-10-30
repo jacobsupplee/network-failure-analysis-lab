@@ -42,3 +42,4 @@ Desktop.ini
 reports/generated/
 # Local network scan evidence
 /data/scan_history.json
+/data/network_baseline.json

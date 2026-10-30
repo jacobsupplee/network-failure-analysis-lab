@@ -92,6 +92,12 @@ Completed live scans are saved locally to `data/scan_history.json`. Select **Sca
 
 Scan history is excluded from Git because it can contain private IP addresses, DNS configuration, gateway details, and firewall evidence. Keep the file local and do not publish it.
 
+## Network baseline and configuration drift
+
+The **Network Baseline** view lets you select a saved live scan that you have verified as a known-good configuration. Newer scans can be compared against it to identify changes in adapter addressing, gateway and DNS settings, IPv4 default routes, Windows Firewall profiles, and TCP connectivity to the same target.
+
+The comparison reports observed differences and highlights changes worth reviewing; it does not assume that every change is a fault or prove that a change caused an outage. A TCP result is only compared when both scans use the same target. Baselines are stored locally in `data/network_baseline.json` and are excluded from Git because they contain network configuration details.
+
 ## Run tests
 
 ```powershell

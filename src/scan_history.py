@@ -41,6 +41,9 @@ def save_scan(scan: dict, history_path: Path = HISTORY_PATH) -> dict:
         "results": scan["results"],
     }
 
+    if isinstance(scan.get("configuration_snapshot"), dict):
+        record["configuration_snapshot"] = scan["configuration_snapshot"]
+
     history = load_scan_history(history_path)
     history.append(record)
 

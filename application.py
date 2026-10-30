@@ -26,6 +26,12 @@ from src.scan_history import (
     load_scan_history,
     save_scan,
 )
+from src.network_baseline import (
+    clear_baseline,
+    compare_configuration,
+    load_baseline,
+    save_baseline,
+)
 
 SCENARIOS = {
     "DHCP diagnostic": Path("scenarios/apipa_dhcp.json"),
@@ -174,6 +180,9 @@ def run_live_scan(
     results = []
     adapter = None
     gateway_ip = None
+    routing_data = None
+    firewall_data = None
+    tcp_data = None
 
     try:
         configuration = collect_network_configuration()
@@ -337,10 +346,167 @@ def run_live_scan(
         )
     )
 
+    default_routes = None
+    if routing_data is not None:
+        default_routes = [
+            {
+                "gateway": route.get("gateway"),
+                "interface": route.get("interface"),
+                "metric": route.get("metric"),
+            }
+            for route in routing_data.get("routes", [])
+            if route.get("destination") == "0.0.0.0"
+            and route.get("netmask") == "0.0.0.0"
+        ]
+
+    firewall_profiles = None
+    if firewall_data is not None:
+        firewall_profiles = {
+            profile.get("name"): profile.get("enabled")
+            for profile in firewall_data.get("profiles", [])
+            if profile.get("name")
+        }
+
+    configuration_snapshot = {
+        "adapter_name": adapter.get("name") if adapter else None,
+        "ip_address": adapter.get("ip_address") if adapter else None,
+        "subnet_mask": adapter.get("subnet_mask") if adapter else None,
+        "default_gateway": gateway_ip,
+        "dhcp_enabled": adapter.get("dhcp_enabled") if adapter else None,
+        "dhcp_server": adapter.get("dhcp_server") if adapter else None,
+        "dns_servers": sorted(adapter.get("dns_servers", [])) if adapter else None,
+        "default_routes": default_routes,
+        "firewall_profiles": firewall_profiles,
+        "tcp_target": (
+            {"host": tcp_data.get("host"), "port": tcp_data.get("port")}
+            if tcp_data else None
+        ),
+        "tcp_result": tcp_data.get("result") if tcp_data else None,
+    }
+
     return {
         "results": results,
         "correlation": correlate_findings(results),
+        "configuration_snapshot": configuration_snapshot,
     }
+
+
+def display_network_baseline() -> None:
+    st.subheader("Network configuration baseline")
+    st.caption(
+        "Compare later scans with a configuration you have verified as known-good. "
+        "A detected change is not automatically a fault."
+    )
+
+    try:
+        baseline = load_baseline()
+        history = load_scan_history()
+    except (OSError, ValueError) as error:
+        st.error(f"Could not load baseline or scan history: {error}")
+        return
+
+    history = sorted(
+        history,
+        key=lambda scan: scan.get("timestamp", ""),
+        reverse=True,
+    )
+    eligible_scans = [
+        scan for scan in history
+        if isinstance(scan.get("configuration_snapshot"), dict)
+        and scan["configuration_snapshot"]
+    ]
+
+    def scan_label(scan: dict) -> str:
+        timestamp = scan.get("timestamp", "Unknown time").replace("T", " ")
+        timestamp = timestamp.replace("+00:00", " UTC")
+        status = status_label(scan.get("overall_status", "inconclusive"))
+        return f"{timestamp} · {status}"
+
+    if baseline:
+        st.markdown("#### Saved baseline")
+        st.write(f"Saved: {baseline.get('saved_at', 'Unknown time')}")
+        st.write(
+            f"Source scan: {baseline.get('source_scan_timestamp') or 'Not recorded'}"
+        )
+        st.caption(
+            f"Source scan assessment: "
+            f"{status_label(baseline.get('source_overall_status', 'unknown'))}"
+        )
+    else:
+        st.info("No baseline has been saved. Run a live scan and select one as a known-good baseline.")
+
+    if not eligible_scans:
+        st.info(
+            "No compatible scans are available yet. Run a new Live Network Scan; "
+            "older history records do not contain configuration snapshots."
+        )
+    else:
+        if baseline:
+            st.markdown("#### Compare a saved scan against the baseline")
+            current_scan = st.selectbox(
+                "Current scan",
+                eligible_scans,
+                index=0,
+                format_func=scan_label,
+                key="baseline_compare_scan",
+            )
+            changes = compare_configuration(
+                baseline["configuration_snapshot"],
+                current_scan["configuration_snapshot"],
+            )
+            if changes:
+                rows = [
+                    {
+                        "Field": change["label"],
+                        "Baseline value": str(change["baseline_value"]),
+                        "Current value": str(change["current_value"]),
+                        "Assessment": change["assessment"],
+                    }
+                    for change in changes
+                ]
+                st.dataframe(rows, use_container_width=True, hide_index=True)
+                st.caption(
+                    "These are observed differences. Review context before treating any change as the cause of an issue."
+                )
+            else:
+                st.success("No configuration differences were detected in the available fields.")
+
+        st.divider()
+        st.markdown("#### Save or replace the baseline")
+        selected_scan = st.selectbox(
+            "Select a scan to use as the baseline",
+            eligible_scans,
+            index=0,
+            format_func=scan_label,
+            key="baseline_source_scan",
+        )
+        confirm_baseline = st.checkbox(
+            "I have verified that this scan represents a known-good network configuration.",
+            key="confirm_network_baseline",
+        )
+        if st.button("Save selected scan as baseline", disabled=not confirm_baseline):
+            try:
+                save_baseline(selected_scan)
+                st.success("Network baseline saved.")
+                st.rerun()
+            except (OSError, ValueError) as error:
+                st.error(f"Could not save network baseline: {error}")
+
+    if baseline:
+        st.divider()
+        st.markdown("#### Clear baseline")
+        confirm_clear = st.checkbox(
+            "I understand that clearing the baseline cannot be undone.",
+            key="confirm_clear_baseline",
+        )
+        if st.button("Clear Network Baseline", disabled=not confirm_clear):
+            try:
+                clear_baseline()
+                st.session_state.pop("confirm_clear_baseline", None)
+                st.success("Network baseline cleared.")
+                st.rerun()
+            except OSError as error:
+                st.error(f"Could not clear network baseline: {error}")
 
 
 def display_scan_history() -> None:
@@ -526,6 +692,7 @@ mode = st.selectbox(
         "Combined scan",
         "Live Network Scan",
         "Scan History",
+        "Network Baseline",
     ],
 )
 
@@ -591,6 +758,9 @@ if mode == "Live Network Scan":
 
 elif mode == "Scan History":
     display_scan_history()
+
+elif mode == "Network Baseline":
+    display_network_baseline()
 
 elif mode == "Combined scan":
     st.subheader("Scenario analysis")
