@@ -32,6 +32,14 @@ from src.network_baseline import (
     load_baseline,
     save_baseline,
 )
+from src.incidents import (
+    add_timeline_entry,
+    associate_scan,
+    build_incident_report_html,
+    create_incident,
+    load_incidents,
+    update_incident,
+)
 
 SCENARIOS = {
     "DHCP diagnostic": Path("scenarios/apipa_dhcp.json"),
@@ -613,6 +621,190 @@ def display_scan_history() -> None:
                 st.error(f"Could not clear scan history: {error}")
 
 
+def display_incidents() -> None:
+    st.subheader("Incident management")
+    st.caption(
+        "Document an issue from initial report through investigation, evidence collection, "
+        "and verified resolution. Incident records are stored locally."
+    )
+
+    try:
+        incidents = load_incidents()
+        history = load_scan_history()
+    except (OSError, ValueError) as error:
+        st.error(f"Could not load incident or scan records: {error}")
+        return
+
+    st.markdown("#### Create an incident")
+    with st.form("create_incident_form", clear_on_submit=True):
+        incident_title = st.text_input("Incident title")
+        incident_description = st.text_area("Description and reported impact")
+        incident_severity = st.selectbox(
+            "Severity",
+            ["Low", "Medium", "High", "Critical"],
+            index=1,
+        )
+        create_submitted = st.form_submit_button("Create incident")
+
+    if create_submitted:
+        try:
+            create_incident(incident_title, incident_description, incident_severity)
+            st.success("Incident created.")
+            st.rerun()
+        except (OSError, ValueError) as error:
+            st.error(f"Could not create incident: {error}")
+
+    if not incidents:
+        st.info("No incidents have been created yet.")
+        return
+
+    incidents = sorted(
+        incidents,
+        key=lambda incident: incident.get("updated_at", ""),
+        reverse=True,
+    )
+
+    def incident_label(incident: dict) -> str:
+        return (
+            f"{incident.get('title', 'Untitled')} · "
+            f"{incident.get('status', 'Open')} · "
+            f"{incident.get('severity', 'Medium')}"
+        )
+
+    selected_incident = st.selectbox(
+        "Select an incident",
+        incidents,
+        format_func=incident_label,
+    )
+    st.divider()
+
+    status_col, severity_col, created_col = st.columns(3)
+    status_col.metric("Status", selected_incident.get("status", "Open"))
+    severity_col.metric("Severity", selected_incident.get("severity", "Medium"))
+    created_col.metric("Associated scans", len(selected_incident.get("associated_scans", [])))
+
+    st.markdown("#### Reported issue")
+    st.write(selected_incident.get("description") or "No description provided.")
+
+    st.markdown("#### Update status or resolution")
+    with st.form("update_incident_form"):
+        status_options = ["Open", "Investigating", "Resolved"]
+        current_status = selected_incident.get("status", "Open")
+        status_index = status_options.index(current_status) if current_status in status_options else 0
+        new_status = st.selectbox("Incident status", status_options, index=status_index)
+        resolution = st.text_area(
+            "Resolution summary",
+            value=selected_incident.get("resolution", ""),
+            help="Required when setting the incident to Resolved.",
+        )
+        update_submitted = st.form_submit_button("Save incident update")
+
+    if update_submitted:
+        try:
+            update_incident(
+                selected_incident["incident_id"],
+                new_status,
+                resolution,
+            )
+            st.success("Incident updated.")
+            st.rerun()
+        except (OSError, ValueError) as error:
+            st.error(f"Could not update incident: {error}")
+
+    st.markdown("#### Investigation timeline")
+    for entry in reversed(selected_incident.get("timeline", [])):
+        timestamp = entry.get("timestamp", "Unknown time").replace("T", " ")
+        st.markdown(f"**{entry.get('entry_type', 'Update')}**")
+        st.caption(timestamp)
+        st.write(entry.get("note", ""))
+
+    with st.form("add_incident_note_form", clear_on_submit=True):
+        timeline_note = st.text_area("Add an investigation note")
+        note_submitted = st.form_submit_button("Add timeline entry")
+
+    if note_submitted:
+        try:
+            add_timeline_entry(selected_incident["incident_id"], timeline_note)
+            st.success("Timeline entry added.")
+            st.rerun()
+        except (OSError, ValueError) as error:
+            st.error(f"Could not add timeline entry: {error}")
+
+    st.divider()
+    st.markdown("#### Associate diagnostic evidence")
+    associated_ids = {
+        scan.get("scan_id")
+        for scan in selected_incident.get("associated_scans", [])
+    }
+    available_scans = [
+        scan for scan in history
+        if scan.get("scan_id") not in associated_ids
+    ]
+
+    if available_scans:
+        available_scans = sorted(
+            available_scans,
+            key=lambda scan: scan.get("timestamp", ""),
+            reverse=True,
+        )
+
+        def scan_label(scan: dict) -> str:
+            timestamp = scan.get("timestamp", "Unknown time").replace("T", " ")
+            return (
+                f"{timestamp} · "
+                f"{status_label(scan.get('overall_status', 'inconclusive'))}"
+            )
+
+        selected_scan = st.selectbox(
+            "Saved scan to attach",
+            available_scans,
+            format_func=scan_label,
+        )
+        if st.button("Attach scan to incident"):
+            try:
+                associate_scan(selected_incident["incident_id"], selected_scan)
+                st.success("Scan evidence attached.")
+                st.rerun()
+            except (OSError, ValueError) as error:
+                st.error(f"Could not attach scan: {error}")
+    else:
+        st.info("No unassociated saved scans are available.")
+
+    associated_scans = selected_incident.get("associated_scans", [])
+    if associated_scans:
+        st.markdown("#### Attached scan evidence")
+        for scan in associated_scans:
+            with st.expander(
+                f"{scan.get('timestamp', 'Unknown time')} · "
+                f"{status_label(scan.get('overall_status', 'inconclusive'))}",
+                expanded=False,
+            ):
+                st.write(scan.get("overall_finding", "No overall finding was saved."))
+                st.json(scan.get("correlation", {}))
+                for result in scan.get("results", []):
+                    analysis = result.get("analysis", {})
+                    st.markdown(
+                        f"**{result.get('title', 'Diagnostic')}** — "
+                        f"{status_label(analysis.get('status', 'inconclusive'))}"
+                    )
+                    st.write(analysis.get("finding", "No finding was recorded."))
+
+    st.divider()
+    st.markdown("#### Export incident report")
+    report = build_incident_report_html(selected_incident)
+    report_name = (
+        "incident-"
+        + selected_incident.get("incident_id", "report")[:8]
+        + ".html"
+    )
+    st.download_button(
+        "Download HTML incident report",
+        data=report,
+        file_name=report_name,
+        mime="text/html",
+    )
+
+
 def display_correlation(correlation: dict) -> None:
     status = correlation.get("status", "inconclusive")
     st.subheader("Overall Root-Cause Assessment")
@@ -693,6 +885,7 @@ mode = st.selectbox(
         "Live Network Scan",
         "Scan History",
         "Network Baseline",
+        "Incident Management",
     ],
 )
 
@@ -761,6 +954,9 @@ elif mode == "Scan History":
 
 elif mode == "Network Baseline":
     display_network_baseline()
+
+elif mode == "Incident Management":
+    display_incidents()
 
 elif mode == "Combined scan":
     st.subheader("Scenario analysis")

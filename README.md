@@ -98,6 +98,12 @@ The **Network Baseline** view lets you select a saved live scan that you have ve
 
 The comparison reports observed differences and highlights changes worth reviewing; it does not assume that every change is a fault or prove that a change caused an outage. A TCP result is only compared when both scans use the same target. Baselines are stored locally in `data/network_baseline.json` and are excluded from Git because they contain network configuration details.
 
+## Incident management
+
+The **Incident Management** view provides a lightweight incident workflow. Create an incident with a severity and description, add timestamped investigation notes, associate saved diagnostic scans, and record the resolution when the incident is closed. Associated scans are copied into the incident record so the evidence remains available even if scan history is later cleared.
+
+An HTML incident report can be exported with the incident details, associated scan summaries, resolution, and investigation timeline. Incident records are stored locally in `data/incidents.json` and excluded from Git because they may contain internal network details and operational notes.
+
 ## Run tests
 
 ```powershell
