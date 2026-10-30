@@ -32,6 +32,7 @@ from src.network_baseline import (
     load_baseline,
     save_baseline,
 )
+from src.playbooks import get_playbook, list_playbooks
 from src.incidents import (
     add_timeline_entry,
     associate_scan,
@@ -805,6 +806,45 @@ def display_incidents() -> None:
     )
 
 
+
+def display_troubleshooting_playbooks() -> None:
+    st.subheader("Troubleshooting playbooks")
+    st.caption(
+        "Guided, read-only procedures for common network failures. "
+        "Commands are displayed for review and are not executed by the application."
+    )
+
+    selected_name = st.selectbox(
+        "Select a troubleshooting playbook",
+        list_playbooks(),
+    )
+    playbook = get_playbook(selected_name)
+
+    st.markdown("#### When to use this playbook")
+    st.write(playbook["trigger"])
+    st.markdown("#### Objective")
+    st.write(playbook["purpose"])
+    st.warning(playbook["safety"])
+
+    st.markdown("#### Verification procedure")
+    for index, step in enumerate(playbook["steps"], start=1):
+        with st.expander(f"{index}. {step['title']}", expanded=index == 1):
+            st.write(step["purpose"])
+            st.code(step["command"], language="powershell")
+            st.markdown("**Expected result**")
+            st.write(step["expected"])
+            st.markdown("**How to interpret the result**")
+            st.write(step["interpretation"])
+
+    st.markdown("#### Remediation guidance")
+    for item in playbook["remediation"]:
+        st.markdown(f"- {item}")
+
+    st.markdown("#### Closure criteria")
+    for item in playbook["closure"]:
+        st.markdown(f"- [ ] {item}")
+
+
 def display_correlation(correlation: dict) -> None:
     status = correlation.get("status", "inconclusive")
     st.subheader("Overall Root-Cause Assessment")
@@ -886,6 +926,7 @@ mode = st.selectbox(
         "Scan History",
         "Network Baseline",
         "Incident Management",
+        "Troubleshooting Playbooks",
     ],
 )
 
@@ -957,6 +998,9 @@ elif mode == "Network Baseline":
 
 elif mode == "Incident Management":
     display_incidents()
+
+elif mode == "Troubleshooting Playbooks":
+    display_troubleshooting_playbooks()
 
 elif mode == "Combined scan":
     st.subheader("Scenario analysis")

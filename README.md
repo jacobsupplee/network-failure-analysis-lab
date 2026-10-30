@@ -104,6 +104,16 @@ The **Incident Management** view provides a lightweight incident workflow. Creat
 
 An HTML incident report can be exported with the incident details, associated scan summaries, resolution, and investigation timeline. Incident records are stored locally in `data/incidents.json` and excluded from Git because they may contain internal network details and operational notes.
 
+## Troubleshooting playbooks
+
+The **Troubleshooting Playbooks** view provides guided, read-only procedures for three common failure areas:
+
+- **DHCP / APIPA failure** — adapter state, IPv4 and lease details, DHCP Client service, client events, and server scope checks.
+- **DNS resolution failure** — configured resolvers, hostname queries, resolver comparison, DNS reachability, and local cache inspection.
+- **Default gateway / routing failure** — adapter gateway, IPv4 route table, selected destination route, gateway reachability, and path tracing.
+
+Each playbook includes its trigger, objective, verification commands, expected results, interpretation guidance, remediation considerations, and closure criteria. Commands are displayed for the technician to review and run manually; the application does not execute them or modify network settings. Some server-side checks require additional Windows modules or administrator permissions.
+
 ## Run tests
 
 ```powershell
