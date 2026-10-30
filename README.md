@@ -2,6 +2,10 @@
 
 An evidence-driven network troubleshooting application built with Python and Streamlit. It collects network observations, runs focused diagnostic analyzers, and correlates their findings to help prioritize the next troubleshooting step.
 
+**Author:** Jacob Supplee  
+**Project:** Network Failure Analysis Lab  
+**Technologies:** Python, Streamlit, PowerShell, pytest
+
 [![Tests](https://github.com/jacobsupplee/network-failure-analysis-lab/actions/workflows/tests.yml/badge.svg)](https://github.com/jacobsupplee/network-failure-analysis-lab/actions/workflows/tests.yml)
 
 ## What it checks
