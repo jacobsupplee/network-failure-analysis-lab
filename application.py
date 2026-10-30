@@ -994,7 +994,7 @@ def navigate_to(page: str) -> None:
 
 
 st.set_page_config(
-    page_title="Network Failure Analysis Lab",
+    page_title="Network Failure Analyzer",
     page_icon=":material/network_check:",
     layout="wide",
 )
@@ -1002,7 +1002,7 @@ st.set_page_config(
 if "mode" not in st.session_state:
     st.session_state["mode"] = "Home"
 
-st.title("Network Failure Analysis Lab")
+st.title("Network Failure Analyzer")
 st.caption("Developed by Jacob Supplee")
 
 mode = st.sidebar.radio(
