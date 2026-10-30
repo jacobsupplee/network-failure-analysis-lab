@@ -398,6 +398,7 @@ st.set_page_config(
 )
 
 st.title("Network Failure Analysis Lab")
+st.caption("Developed by Jacob Supplee")
 st.write(
     "An evidence-driven tool for investigating network configuration, "
     "DNS resolution, connectivity, routing, and TCP port problems."
